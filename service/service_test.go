@@ -59,6 +59,7 @@ func doTestService(t *testing.T, service *Service) {
 	require.NoError(t, err)
 	defer clientB2.Close()
 
+	// register builds a registration messaging for registering key material
 	register := func(registrationID uint32, identityKey, signedPreKey string, preKeys ...uint8) model.Message {
 		reg := &model.Register{
 			RegistrationID: registrationID,
@@ -74,6 +75,7 @@ func doTestService(t *testing.T, service *Service) {
 		return msg
 	}
 
+	// requestPreKeys builds a message for requesting pre key information for a specific user
 	requestPreKeys := func(userID uuid.UUID, knownDeviceIDs ...uint32) model.Message {
 		req := &model.RequestPreKeys{
 			UserID:         userID.String(),
@@ -85,14 +87,17 @@ func doTestService(t *testing.T, service *Service) {
 		return msg
 	}
 
+	// send sends a message via a given client
 	send := func(client *ClientConnection, msg model.Message) {
 		client.Out() <- msg
 	}
 
+	// receive receives a message via a given client
 	receive := func(client *ClientConnection) model.Message {
 		return <-client.In()
 	}
 
+	// drain drains all pending messages for a client and returns the number of messages drained
 	drain := func(client *ClientConnection) int {
 		count := 0
 
