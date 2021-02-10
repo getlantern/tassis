@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/binary"
+	"io"
 	"sync/atomic"
 
 	"github.com/getlantern/msgpack"
@@ -44,6 +45,21 @@ type Type uint8
 // All multi-byte numeric values are encoded in Little Endian byte order.
 //
 type Message []byte
+
+// ReadNextMessage reads the next message from a given io.Reader
+func ReadNextMessage(r io.Reader) (Message, error) {
+	header := make(Message, 10)
+	_, err := io.ReadFull(r, header)
+	if err != nil {
+		return nil, err
+	}
+
+	payloadLength := header.PayloadLength()
+	msg := make(Message, len(header)+payloadLength)
+	copy(msg, header)
+	_, err = io.ReadFull(r, msg[len(header):])
+	return msg, err
+}
 
 func (msg Message) Version() Version {
 	return Version(msg[0])

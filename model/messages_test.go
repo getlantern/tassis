@@ -1,6 +1,7 @@
 package model
 
 import (
+	"bytes"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -15,7 +16,11 @@ var (
 
 func TestMessage(t *testing.T) {
 	payload := "supercalifragilisticexpialidocious"
-	msg := messageBuilder.NewMessage(5, []byte(payload))
+	_msg := messageBuilder.NewMessage(5, []byte(payload))
+	var buf bytes.Buffer
+	buf.Write(_msg)
+	msg, err := ReadNextMessage(&buf)
+	require.NoError(t, err)
 	require.Equal(t, Version(LatestVersion), msg.Version())
 	require.Equal(t, Sequence(atomic.LoadUint32(&messageBuilder.seq)), msg.Sequence())
 	require.Equal(t, Type(5), msg.Type())
