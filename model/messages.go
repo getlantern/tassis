@@ -15,13 +15,13 @@ const (
 
 const (
 	TypeACK            = 1
-	TypeRegister       = 2
-	TypeUnregister     = 3
-	TypeRequestPreKeys = 4
-	TypePreKey         = 5
-	TypePreKeysLow     = 6
-	TypeUserMessage    = 7
-	TypeError          = 8
+	TypeError          = 2
+	TypeRegister       = 3
+	TypeUnregister     = 4
+	TypeRequestPreKeys = 5
+	TypePreKey         = 6
+	TypePreKeysLow     = 7
+	TypeUserMessage    = 8
 )
 
 var (

@@ -1,3 +1,6 @@
+The most up-to-date documentation lives in the code. See [model/messages.go](model/messages.go) for message formats and [testsupport/testsupport.go](testsupport/testsupport.go) for a fairly full usage example
+that illustrates the message exchange pattern.
+
 # messaging-server
 
 messaging-server provides back-end facilities for exchanging end-to-end encryptoed (E2EE) messages between messaging clients. It provides two key facilities:
@@ -68,6 +71,33 @@ Once clients have durably received a message, they acknowledge this to messaging
 ### Message Retention
 We still need to work this out, but for practical reasons, messages won't be retained forever.
 
+## Websockets API
+The public API uses websockets. Clients connect to ws[s]://server/<userID>/<deviceID>. At that point, they exchange messages with the server, both for accessing key distribution functions as well as sending messages to other users.
+
+All messages in the context of a client connection have a unique sequence number that identifies the message (separate sequences for both directions).
+
+For all messages, if an error is encountered while processing the message, the server will respond with an [error message](model/errors.go) whose sequence number is set to the sequence number of the message that led to the error.
+
+For messages that require a response (like RequestPreKeys), if there was no error, the remote end will respond the corresponding response messages (like PreKey).
+
+For all other messages, the remote end (both client and server) should respond with an ACK message whose sequence number is set to the sequence number of the message that is being acknowledged.
+
+### Message Types
+The implementation of the messages types lives at [model/messages.go](model/messages.go).
+
+### Message Encoding
+The message envelope uses a custom binary format that is suitable for reading messages from a stream (such as as TCP connection, HTTP request or response body, etc.).
+
+Performance critical message payloads are encoded in a custom binary format for speed and space efficiency. Less performance critical message payloads are encoded using [MessagePack](https://msgpack.org/).
+
+### Message Version
+The message envelope makes a provision for supporting different versions of the message formats, though currently we have only 1 version.
+
+## External Dependencies
+messaging-server needs a [database](db/db.go) for storing key distribution information and a pub/sub [message broker](broker.broker.go) for exchanging messages between users.
+
+Simple in-memory implementations of both are provided for testing. The database and broker to be used for production still need to be selected, though [DynamoDB](https://aws.amazon.com/dynamodb/) and [Apache Pulsar](https://streamnative.io/cloud/hosted) are current front-runners.
+
 ## Security
 
 ### Key Distribution
@@ -91,3 +121,4 @@ In order to prevent unauthorized users from stealing messages before they can be
 
 ### Metadata
 messaging-server does not provide any assurances about protecting knowledge about the relationships between senders and recipients (i.e. who has sent to whom and when).
+
