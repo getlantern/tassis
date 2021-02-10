@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/binary"
+	"sync/atomic"
 
 	"github.com/getlantern/msgpack"
 	"github.com/google/uuid"
@@ -44,17 +45,6 @@ type Type uint8
 //
 type Message []byte
 
-// NewMessage constructs a new message
-func NewMessage(msgType Type, payload []byte) Message {
-	payloadLength := len(payload)
-	msg := make(Message, 10+payloadLength)
-	msg[0] = byte(LatestVersion)
-	msg[5] = byte(msgType)
-	enc.PutUint32(msg[6:], uint32(payloadLength))
-	copy(msg[10:], payload)
-	return msg
-}
-
 func (msg Message) Version() Version {
 	return Version(msg[0])
 }
@@ -79,22 +69,43 @@ func (msg Message) Payload() []byte {
 	return msg[10 : 10+msg.PayloadLength()]
 }
 
-func newMessagePacked(msgType Type, msg interface{}) (Message, error) {
+type MessageBuilder struct {
+	seq uint32
+}
+
+// NewMessage constructs a new message
+func (b *MessageBuilder) NewMessage(msgType Type, payload []byte) Message {
+	payloadLength := len(payload)
+	msg := make(Message, 10+payloadLength)
+	msg[0] = byte(LatestVersion)
+	b.AttachNextSequence(msg)
+	msg[5] = byte(msgType)
+	enc.PutUint32(msg[6:], uint32(payloadLength))
+	copy(msg[10:], payload)
+	return msg
+}
+
+// AttachNextSequence attaches the next sequence number to the given message
+func (b *MessageBuilder) AttachNextSequence(msg Message) {
+	msg.SetSequence(Sequence(atomic.AddUint32(&b.seq, 1)))
+}
+
+func (b *MessageBuilder) newMessagePacked(msgType Type, msg interface{}) (Message, error) {
 	payload, err := msgpack.Marshal(msg)
 	if err != nil {
 		return nil, err
 	}
-	return NewMessage(msgType, payload), nil
+	return b.NewMessage(msgType, payload), nil
 }
 
 // Ack is a message that one end or the other sends to acknowledge durable receipt of a message based on its sequence number. It simply uses the sequence number
 // field of the Message envelope as the acked sequence number (i.e. acks don't have their own sequence numbers)
-func (msg Message) Ack() Message {
-	return NewAck(msg.Sequence())
+func (b *MessageBuilder) Ack(msg Message) Message {
+	return b.NewAck(msg.Sequence())
 }
 
-func NewAck(sequence Sequence) Message {
-	msg := NewMessage(TypeACK, nil)
+func (b *MessageBuilder) NewAck(sequence Sequence) Message {
+	msg := b.NewMessage(TypeACK, nil)
 	msg.SetSequence(sequence)
 	return msg
 }
@@ -116,8 +127,8 @@ func (msg Message) Register() (*Register, error) {
 	return result, nil
 }
 
-func NewRegister(msg *Register) (Message, error) {
-	return newMessagePacked(TypeRegister, msg)
+func (b *MessageBuilder) NewRegister(msg *Register) (Message, error) {
+	return b.newMessagePacked(TypeRegister, msg)
 }
 
 // RequestPreKeys is a message that a client sends to request pre keys for all of a user's device about which it does not yet know. It is encoded with MessagePack.
@@ -135,8 +146,8 @@ func (msg Message) RequestPreKeys() (*RequestPreKeys, error) {
 	return result, nil
 }
 
-func NewRequestPreKeys(msg *RequestPreKeys) (Message, error) {
-	return newMessagePacked(TypeRequestPreKeys, msg)
+func (b *MessageBuilder) NewRequestPreKeys(msg *RequestPreKeys) (Message, error) {
+	return b.newMessagePacked(TypeRequestPreKeys, msg)
 }
 
 // PreKey is a message with pre key information for a specific device. It is encoded with MessagePack.
@@ -158,8 +169,8 @@ func (msg Message) PreKey() (*PreKey, error) {
 	return result, nil
 }
 
-func NewPreKey(msg *PreKey) (Message, error) {
-	return newMessagePacked(TypePreKey, msg)
+func (b *MessageBuilder) NewPreKey(msg *PreKey) (Message, error) {
+	return b.newMessagePacked(TypePreKey, msg)
 }
 
 // PreKeysLow is a message indicating that more pre-keys are needed
@@ -174,10 +185,10 @@ func NewPreKey(msg *PreKey) (Message, error) {
 //
 type PreKeysLow []byte
 
-func NewPreKeysLow(numKeysRequested uint16) Message {
+func (b *MessageBuilder) NewPreKeysLow(numKeysRequested uint16) Message {
 	msg := make(PreKeysLow, 2)
 	enc.PutUint16(msg, numKeysRequested)
-	return NewMessage(TypePreKeysLow, msg)
+	return b.NewMessage(TypePreKeysLow, msg)
 }
 
 func (msg Message) PreKeysLow() PreKeysLow {
@@ -200,11 +211,11 @@ func (msg PreKeysLow) NumKeysRequested() uint16 {
 //
 type UserMessage []byte
 
-func NewUserMessage(toFrom uuid.UUID, cipherText []byte) Message {
+func (b *MessageBuilder) NewUserMessage(toFrom uuid.UUID, cipherText []byte) Message {
 	msg := make(UserMessage, 16+len(cipherText))
 	msg.SetToFrom(toFrom)
 	copy(msg[16:], cipherText)
-	return NewMessage(TypeUserMessage, msg)
+	return b.NewMessage(TypeUserMessage, msg)
 }
 
 func (msg Message) UserMessage() UserMessage {

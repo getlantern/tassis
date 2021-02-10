@@ -54,13 +54,13 @@ func TypedError(err error) *Error {
 	return &Error{ErrCodeUnknownError, err.Error()}
 }
 
-func NewError(sequence Sequence, err *Error) Message {
+func (b *MessageBuilder) NewError(sequence Sequence, err *Error) Message {
 	descriptionBytes := []byte(err.Description)
 	payload := make(UserMessage, 1+len(descriptionBytes))
 	payload[0] = err.Code
 	copy(payload[1:], descriptionBytes)
 
-	msg := NewMessage(TypeError, payload)
+	msg := b.NewMessage(TypeError, payload)
 	msg.SetSequence(sequence)
 	return msg
 }

@@ -22,14 +22,16 @@ type Opts struct {
 }
 
 type Service struct {
-	db     db.DB
-	broker broker.Broker
+	db             db.DB
+	broker         broker.Broker
+	messageBuilder *model.MessageBuilder
 }
 
 func New(opts *Opts) *Service {
 	return &Service{
-		db:     opts.DB,
-		broker: opts.Broker,
+		db:             opts.DB,
+		broker:         opts.Broker,
+		messageBuilder: &model.MessageBuilder{},
 	}
 }
 
@@ -98,7 +100,6 @@ func (conn *ClientConnection) Close() {
 func (conn *ClientConnection) handleInbound() {
 	defer conn.subscriber.Close()
 
-	var currentSequence model.Sequence = 0
 	ch := conn.subscriber.Messages()
 	for {
 		select {
@@ -107,11 +108,10 @@ func (conn *ClientConnection) handleInbound() {
 		case brokerMsg := <-ch:
 			msg := model.Message(brokerMsg.Data())
 			if msg.Type() == model.TypeUserMessage {
-				msg.SetSequence(currentSequence)
+				conn.service.messageBuilder.AttachNextSequence(msg)
 				conn.unackedMessageMx.Lock()
-				conn.unackedMessages[currentSequence] = brokerMsg.Acker()
+				conn.unackedMessages[msg.Sequence()] = brokerMsg.Acker()
 				conn.unackedMessageMx.Unlock()
-				currentSequence++
 			}
 			conn.in <- msg
 		}
@@ -126,79 +126,112 @@ func (conn *ClientConnection) handleOutbound() {
 		var err error
 		switch msg.Type() {
 		case model.TypeACK:
-			err = conn.handleACK(msg.Sequence())
+			conn.handleACK(msg)
 		case model.TypeRegister:
-			var register *model.Register
-			register, err = msg.Register()
-			if err == nil {
-				err = conn.handleRegister(register)
-				if err == nil {
-					conn.in <- msg.Ack()
-				}
-			}
+			conn.handleRegister(msg)
 		case model.TypeUnregister:
-			err = conn.handleUnregister()
-			return
+			conn.handleUnregister(msg)
 		case model.TypeRequestPreKeys:
-			err = conn.handleRequestPreKeys(msg)
+			conn.handleRequestPreKeys(msg)
 		case model.TypeUserMessage:
-			err = conn.handleUserMessage(msg)
+			conn.handleUserMessage(msg)
 		}
 		if err != nil {
 			log.Error(err)
-			conn.in <- model.NewError(msg.Sequence(), model.TypedError(err))
+			conn.in <- conn.service.messageBuilder.NewError(msg.Sequence(), model.TypedError(err))
 		}
 	}
 }
 
-func (conn *ClientConnection) handleACK(sequence model.Sequence) error {
+func (conn *ClientConnection) handleACK(msg model.Message) {
+	sequence := msg.Sequence()
 	conn.unackedMessageMx.Lock()
 	acker, found := conn.unackedMessages[sequence]
 	conn.unackedMessageMx.Unlock()
-	if found {
-		err := acker()
-		if err == nil {
-			conn.unackedMessageMx.Lock()
-			delete(conn.unackedMessages, sequence)
-			conn.unackedMessageMx.Unlock()
-		}
-		return err
+
+	if !found {
+		log.Errorf("no ack found for sequence %d", sequence)
+		return
 	}
-	return errors.New("no ack found for sequence %d", sequence)
+
+	err := acker()
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	conn.unackedMessageMx.Lock()
+	delete(conn.unackedMessages, sequence)
+	conn.unackedMessageMx.Unlock()
 }
 
-func (conn *ClientConnection) handleRegister(msg *model.Register) error {
-	return conn.service.db.Register(conn.userID, conn.deviceID, msg)
+func (conn *ClientConnection) handleRegister(msg model.Message) {
+	register, err := msg.Register()
+	if err != nil {
+		conn.error(msg, err)
+		return
+	}
+
+	err = conn.service.db.Register(conn.userID, conn.deviceID, register)
+	if err != nil {
+		conn.error(msg, err)
+		return
+	}
+
+	conn.ack(msg)
 }
 
-func (conn *ClientConnection) handleUnregister() error {
-	return conn.service.db.Unregister(conn.userID, conn.deviceID)
+func (conn *ClientConnection) handleUnregister(msg model.Message) {
+	err := conn.service.db.Unregister(conn.userID, conn.deviceID)
+	if err != nil {
+		conn.error(msg, err)
+		return
+	}
+	conn.ack(msg)
 }
 
-func (conn *ClientConnection) handleRequestPreKeys(msg model.Message) error {
+func (conn *ClientConnection) handleRequestPreKeys(msg model.Message) {
 	request, err := msg.RequestPreKeys()
 	if err != nil {
-		return err
+		conn.error(msg, err)
+		return
 	}
 
 	// Get as many pre-keys as we can and handle the errors in here
 	preKeys, errs := conn.service.db.RequestPreKeys(request)
 	for _, preKey := range preKeys {
-		outMsg, err := model.NewPreKey(preKey)
+		outMsg, err := conn.service.messageBuilder.NewPreKey(preKey)
 		if err != nil {
 			errs = append(errs, err)
 		} else {
-			conn.in <- outMsg
+			conn.send(outMsg)
 		}
 	}
-	for _, err := range errs {
-		conn.in <- model.NewError(msg.Sequence(), model.TypedError(err))
-	}
 
-	return nil
+	// send all errors
+	for _, err := range errs {
+		conn.error(msg, err)
+	}
 }
 
-func (conn *ClientConnection) handleUserMessage(msg model.Message) error {
+func (conn *ClientConnection) handleUserMessage(msg model.Message) {
 	msg.UserMessage().SetToFrom(conn.userID)
-	return conn.publisher.Publish(msg)
+	err := conn.publisher.Publish(msg)
+	if err != nil {
+		conn.error(msg, err)
+		return
+	}
+	conn.ack(msg)
+}
+
+func (conn *ClientConnection) ack(msg model.Message) {
+	conn.send(conn.service.messageBuilder.Ack(msg))
+}
+
+func (conn *ClientConnection) error(msg model.Message, err error) {
+	log.Error(err)
+	conn.send(conn.service.messageBuilder.NewError(msg.Sequence(), model.TypedError(err)))
+}
+
+func (conn *ClientConnection) send(msg model.Message) {
+	conn.in <- msg
 }

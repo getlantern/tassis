@@ -2,26 +2,31 @@ package model
 
 import (
 	"errors"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
+var (
+	messageBuilder MessageBuilder
+)
+
 func TestMessage(t *testing.T) {
 	payload := "supercalifragilisticexpialidocious"
-	msg := NewMessage(5, []byte(payload))
+	msg := messageBuilder.NewMessage(5, []byte(payload))
 	require.Equal(t, Version(LatestVersion), msg.Version())
-	require.Equal(t, Sequence(0), msg.Sequence())
+	require.Equal(t, Sequence(atomic.LoadUint32(&messageBuilder.seq)), msg.Sequence())
 	require.Equal(t, Type(5), msg.Type())
 	require.Equal(t, len(payload), msg.PayloadLength())
 	require.Equal(t, payload, string(msg.Payload()))
 }
 
 func TestAck(t *testing.T) {
-	msg := NewMessage(TypePreKey, nil)
+	msg := messageBuilder.NewMessage(TypePreKey, nil)
 	msg.SetSequence(5)
-	require.Equal(t, Sequence(5), msg.Ack().Sequence())
+	require.Equal(t, Sequence(5), messageBuilder.Ack(msg).Sequence())
 }
 
 func TestRegister(t *testing.T) {
@@ -32,7 +37,7 @@ func TestRegister(t *testing.T) {
 		PreKeys:        [][]byte{[]byte{6}, []byte{7}},
 	}
 
-	msg, err := NewRegister(orig)
+	msg, err := messageBuilder.NewRegister(orig)
 	require.NoError(t, err)
 	require.Equal(t, Type(TypeRegister), msg.Type())
 
@@ -47,7 +52,7 @@ func TestRequestPreKeys(t *testing.T) {
 		KnownDeviceIDs: []uint32{3, 4},
 	}
 
-	msg, err := NewRequestPreKeys(orig)
+	msg, err := messageBuilder.NewRequestPreKeys(orig)
 	require.NoError(t, err)
 	require.Equal(t, Type(TypeRequestPreKeys), msg.Type())
 
@@ -66,7 +71,7 @@ func TestPreKey(t *testing.T) {
 		PreKey:         []byte{6},
 	}
 
-	msg, err := NewPreKey(orig)
+	msg, err := messageBuilder.NewPreKey(orig)
 	require.NoError(t, err)
 	require.Equal(t, Type(TypePreKey), msg.Type())
 
@@ -76,7 +81,7 @@ func TestPreKey(t *testing.T) {
 }
 
 func TestPreKeysLow(t *testing.T) {
-	msg := NewPreKeysLow(65)
+	msg := messageBuilder.NewPreKeysLow(65)
 	require.Equal(t, Type(TypePreKeysLow), msg.Type())
 
 	roundTripped := msg.PreKeysLow()
@@ -87,7 +92,7 @@ func TestUserMessage(t *testing.T) {
 	to := uuid.New()
 	from := uuid.New()
 	cipherText := "bob"
-	msg := NewUserMessage(to, []byte(cipherText))
+	msg := messageBuilder.NewUserMessage(to, []byte(cipherText))
 	require.Equal(t, Type(TypeUserMessage), msg.Type())
 
 	roundTripped := msg.UserMessage()
@@ -103,7 +108,7 @@ func TestError(t *testing.T) {
 		Code:        5,
 		Description: "something went wrong",
 	}
-	msg := NewError(7, orig)
+	msg := messageBuilder.NewError(7, orig)
 	require.Equal(t, Type(TypeError), msg.Type())
 	require.Equal(t, Sequence(7), msg.Sequence())
 
