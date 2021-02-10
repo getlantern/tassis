@@ -2,6 +2,7 @@ package service
 
 import (
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -17,21 +18,43 @@ var (
 )
 
 type Opts struct {
-	DB     db.DB
-	Broker broker.Broker
+	DB                   db.DB
+	Broker               broker.Broker
+	CheckPreKeysInterval time.Duration
+	LowPreKeysLimit      int
+	NumPreKeysToRequest  int
+}
+
+func (opts *Opts) ApplyDefaults() {
+	if opts.CheckPreKeysInterval == 0 {
+		opts.CheckPreKeysInterval = 5 * time.Minute
+	}
+	if opts.LowPreKeysLimit == 0 {
+		opts.LowPreKeysLimit = 10
+	}
+	if opts.NumPreKeysToRequest == 0 {
+		opts.NumPreKeysToRequest = opts.LowPreKeysLimit * 2
+	}
 }
 
 type Service struct {
-	db             db.DB
-	broker         broker.Broker
-	messageBuilder *model.MessageBuilder
+	db                   db.DB
+	broker               broker.Broker
+	checkPreKeysInterval time.Duration
+	lowPreKeysLimit      int
+	numPreKeysToRequest  int
+	messageBuilder       *model.MessageBuilder
 }
 
 func New(opts *Opts) *Service {
+	opts.ApplyDefaults()
 	return &Service{
-		db:             opts.DB,
-		broker:         opts.Broker,
-		messageBuilder: &model.MessageBuilder{},
+		db:                   opts.DB,
+		broker:               opts.Broker,
+		checkPreKeysInterval: opts.CheckPreKeysInterval,
+		lowPreKeysLimit:      opts.LowPreKeysLimit,
+		numPreKeysToRequest:  opts.NumPreKeysToRequest,
+		messageBuilder:       &model.MessageBuilder{},
 	}
 }
 
@@ -53,7 +76,7 @@ type ClientConnection struct {
 // channels for sending messages to the service and receiving messages from it.
 // When the client wishes to disconnect, it should close the ClientConnection.
 func (service *Service) Connect(userID uuid.UUID, deviceID uint32) (*ClientConnection, error) {
-	// TODO: authenticate user
+	// TODO: make sure web layer authenticates user somehow
 
 	subscriber, err := service.broker.NewSubscriber(userID.String())
 	if err != nil {
@@ -77,6 +100,10 @@ func (service *Service) Connect(userID uuid.UUID, deviceID uint32) (*ClientConne
 		closeCh:         make(chan interface{}),
 	}
 
+	// on first connect and periodically thereafter, check if a device is low on pre keys and request more
+	go conn.requestPreKeysIfNecessary()
+
+	// handle messages inbound to the client and outbound from the client in full duplex
 	go conn.handleInbound()
 	go conn.handleOutbound()
 
@@ -95,6 +122,22 @@ func (conn *ClientConnection) Close() {
 	conn.closeOnce.Do(func() {
 		close(conn.closeCh)
 	})
+}
+
+func (conn *ClientConnection) requestPreKeysIfNecessary() {
+	for {
+		numPreKeys, err := conn.service.db.PreKeysRemaining(conn.userID, conn.deviceID)
+		if err == nil && numPreKeys < conn.service.lowPreKeysLimit {
+			conn.send(conn.service.messageBuilder.NewPreKeysLow(uint16(conn.service.numPreKeysToRequest)))
+		}
+		select {
+		case <-time.After(conn.service.checkPreKeysInterval):
+			// okay
+		case <-conn.closeCh:
+			// stop
+			return
+		}
+	}
 }
 
 func (conn *ClientConnection) handleInbound() {

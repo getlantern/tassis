@@ -11,19 +11,15 @@ import (
 	"github.com/getlantern/messaging-server/model"
 )
 
-func New(lowPreKeyLimit int, numPreKeysToRequest int) db.DB {
+func New() db.DB {
 	return &memdb{
-		lowPreKeyLimit:      lowPreKeyLimit,
-		numPreKeysToRequest: numPreKeysToRequest,
-		users:               make(map[uuid.UUID]map[uint32]*model.Register),
+		users: make(map[uuid.UUID]map[uint32]*model.Register),
 	}
 }
 
 type memdb struct {
-	lowPreKeyLimit      int
-	numPreKeysToRequest int
-	users               map[uuid.UUID]map[uint32]*model.Register
-	mx                  sync.Mutex
+	users map[uuid.UUID]map[uint32]*model.Register
+	mx    sync.Mutex
 }
 
 func (d *memdb) Register(userID uuid.UUID, deviceID uint32, registration *model.Register) error {
@@ -89,9 +85,6 @@ func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, 
 			} else {
 				preKey := registration.PreKeys[len(registration.PreKeys)-1]
 				registration.PreKeys = registration.PreKeys[:len(registration.PreKeys)-1]
-				if len(registration.PreKeys) < d.lowPreKeyLimit {
-					// TODO: send a message to request numPreKeysToRequest
-				}
 				result = append(result, &model.PreKey{
 					UserID:         request.UserID,
 					DeviceID:       deviceID,
@@ -105,4 +98,21 @@ func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, 
 	}
 
 	return result, errors
+}
+
+func (d *memdb) PreKeysRemaining(userID uuid.UUID, deviceID uint32) (int, error) {
+	d.mx.Lock()
+	defer d.mx.Unlock()
+
+	user := d.users[userID]
+	if user == nil {
+		return 0, model.ErrUnknownUser
+	}
+
+	device := user[deviceID]
+	if device == nil {
+		return 0, model.ErrUnknownDevice
+	}
+
+	return len(device.PreKeys), nil
 }

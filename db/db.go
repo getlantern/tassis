@@ -13,4 +13,6 @@ type DB interface {
 	Unregister(userID uuid.UUID, deviceID uint32) error
 
 	RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, []error)
+
+	PreKeysRemaining(userID uuid.UUID, deviceID uint32) (int, error)
 }

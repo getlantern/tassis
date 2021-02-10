@@ -1,6 +1,8 @@
 package service
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 
 	"github.com/getlantern/messaging-server/broker/membroker"
@@ -12,16 +14,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	checkPreKeysInterval = 100 * time.Millisecond
+)
+
 var (
 	messageBuilder model.MessageBuilder
 )
 
-func TestService(t *testing.T) {
-	service := New(&Opts{
-		DB:     memdb.New(2, 4),
-		Broker: membroker.New(),
-	})
+func TestServiceInMemory(t *testing.T) {
+	doTestService(t, New(&Opts{
+		DB:                   memdb.New(),
+		Broker:               membroker.New(),
+		CheckPreKeysInterval: checkPreKeysInterval,
+		LowPreKeysLimit:      3,
+		NumPreKeysToRequest:  4,
+	}))
+}
 
+func doTestService(t *testing.T, service *Service) {
 	userA := uuid.New()
 	deviceA1 := uint32(11)
 	deviceA2 := uint32(12)
@@ -150,5 +161,16 @@ func TestService(t *testing.T) {
 		},
 	}
 	require.EqualValues(t, expectedPreKeys, preKeys, "should have gotten correct pre keys for both devices")
+
+	// make sure that server is requesting pre-keys when necessary
+	time.Sleep(checkPreKeysInterval * 2)
+	require.EqualValues(t, 4, receive(clientB1).PreKeysLow().NumKeysRequested(), "clientB1 should have been notified that prekeys are getting low")
+	require.EqualValues(t, 4, receive(clientB2).PreKeysLow().NumKeysRequested(), "clientB2 should have been notified that prekeys are getting low")
+	roundTrip(clientB1, register(3, "ikB1", "spkB1", 34, 35, 36, 37))
+	roundTrip(clientB2, register(4, "ikB2", "spkB2", 44, 45, 46, 47))
+
+	time.Sleep(checkPreKeysInterval * 2)
+	require.Zero(t, drain(clientB1), "server should have stopped requesting pre keys for clientB1")
+	require.Zero(t, drain(clientB2), "server should have stopped requesting pre keys for clientB2")
 
 }

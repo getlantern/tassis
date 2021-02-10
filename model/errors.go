@@ -21,13 +21,18 @@ var (
 		Description: "unknown user",
 	}
 
-	ErrNoPreKeyAvailable = &Error{
+	ErrUnknownDevice = &Error{
 		Code:        102,
+		Description: "unknown device",
+	}
+
+	ErrNoPreKeyAvailable = &Error{
+		Code:        201,
 		Description: "no prekey available for device",
 	}
 )
 
-// Error is a message indicating that there was an error, encoded as follows:
+// Error is a structured error message indicating that there was an error, encoded as follows:
 //
 //   +------+-------------+
 //   | Code | Description |
@@ -37,6 +42,7 @@ var (
 //
 // If the error corresponds to an original message, the sequence on the enclosing Message envelope is
 // set to the sequence from the original message.
+//
 type Error struct {
 	Code        uint8
 	Description string
