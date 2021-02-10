@@ -89,18 +89,24 @@ func TestPreKeysLow(t *testing.T) {
 }
 
 func TestUserMessage(t *testing.T) {
-	to := uuid.New()
-	from := uuid.New()
+	toUser := uuid.New()
+	toDevice := uint32(1)
+	fromUser := uuid.New()
+	fromDevice := uint32(2)
+
 	cipherText := "bob"
-	msg := messageBuilder.NewUserMessage(to, []byte(cipherText))
+	msg := messageBuilder.NewUserMessage(toUser, toDevice, []byte(cipherText))
 	require.Equal(t, Type(TypeUserMessage), msg.Type())
 
 	roundTripped := msg.UserMessage()
-	require.Equal(t, to, roundTripped.ToFrom())
+	require.Equal(t, toUser, roundTripped.UserID())
+	require.Equal(t, toDevice, roundTripped.DeviceID())
 	require.Equal(t, cipherText, string(roundTripped.CipherText()))
 
-	roundTripped.SetToFrom(from)
-	require.Equal(t, from, roundTripped.ToFrom())
+	roundTripped.SetUserID(fromUser)
+	roundTripped.SetDeviceID(fromDevice)
+	require.Equal(t, fromUser, roundTripped.UserID())
+	require.Equal(t, fromDevice, roundTripped.DeviceID())
 }
 
 func TestError(t *testing.T) {

@@ -13,7 +13,7 @@ require (
 	github.com/getlantern/safechannels v0.0.0-20201218194342-b4e5383e9627 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/google/uuid v1.2.0
-	github.com/hashicorp/golang-lru v0.5.4 // indirect
+	github.com/hashicorp/golang-lru v0.5.4
 	github.com/stretchr/testify v1.7.0
 	github.com/vmihailenco/msgpack v4.0.4+incompatible // indirect
 	google.golang.org/appengine v1.6.7 // indirect

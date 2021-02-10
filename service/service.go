@@ -1,13 +1,16 @@
 package service
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	lru "github.com/hashicorp/golang-lru"
 
 	"github.com/getlantern/errors"
 	"github.com/getlantern/golog"
+
 	"github.com/getlantern/messaging-server/broker"
 	"github.com/getlantern/messaging-server/db"
 	"github.com/getlantern/messaging-server/model"
@@ -20,12 +23,16 @@ var (
 type Opts struct {
 	DB                   db.DB
 	Broker               broker.Broker
+	PublisherCacheSize   int
 	CheckPreKeysInterval time.Duration
 	LowPreKeysLimit      int
 	NumPreKeysToRequest  int
 }
 
 func (opts *Opts) ApplyDefaults() {
+	if opts.PublisherCacheSize <= 0 {
+		opts.PublisherCacheSize = 1
+	}
 	if opts.CheckPreKeysInterval == 0 {
 		opts.CheckPreKeysInterval = 5 * time.Minute
 	}
@@ -44,18 +51,27 @@ type Service struct {
 	lowPreKeysLimit      int
 	numPreKeysToRequest  int
 	messageBuilder       *model.MessageBuilder
+	publisherCache       *lru.Cache
+	publisherCacheMx     sync.Mutex
 }
 
-func New(opts *Opts) *Service {
+func New(opts *Opts) (*Service, error) {
 	opts.ApplyDefaults()
+	publisherCache, err := lru.NewWithEvict(opts.PublisherCacheSize, func(key, value interface{}) {
+		value.(broker.Publisher).Close()
+	})
+	if err != nil {
+		return nil, err
+	}
 	return &Service{
 		db:                   opts.DB,
 		broker:               opts.Broker,
+		publisherCache:       publisherCache,
 		checkPreKeysInterval: opts.CheckPreKeysInterval,
 		lowPreKeysLimit:      opts.LowPreKeysLimit,
 		numPreKeysToRequest:  opts.NumPreKeysToRequest,
 		messageBuilder:       &model.MessageBuilder{},
-	}
+	}, err
 }
 
 type ClientConnection struct {
@@ -63,7 +79,6 @@ type ClientConnection struct {
 	deviceID         uint32
 	service          *Service
 	subscriber       broker.Subscriber
-	publisher        broker.Publisher
 	unackedMessages  map[model.Sequence]func() error
 	unackedMessageMx sync.Mutex
 	in               chan model.Message
@@ -76,16 +91,12 @@ type ClientConnection struct {
 // channels for sending messages to the service and receiving messages from it.
 // When the client wishes to disconnect, it should close the ClientConnection.
 func (service *Service) Connect(userID uuid.UUID, deviceID uint32) (*ClientConnection, error) {
+	// TODO: instrument number of open clientConnections
 	// TODO: make sure web layer authenticates user somehow
 
-	subscriber, err := service.broker.NewSubscriber(userID.String())
+	subscriber, err := service.broker.NewSubscriber(topicFor(userID, deviceID))
 	if err != nil {
 		return nil, errors.New("unable to open subscriber: %v", err)
-	}
-	publisher, err := service.broker.NewPublisher(userID.String())
-	if err != nil {
-		subscriber.Close()
-		return nil, errors.New("unable to open publisher: %v", err)
 	}
 
 	conn := &ClientConnection{
@@ -93,15 +104,16 @@ func (service *Service) Connect(userID uuid.UUID, deviceID uint32) (*ClientConne
 		deviceID:        deviceID,
 		service:         service,
 		subscriber:      subscriber,
-		publisher:       publisher,
 		unackedMessages: make(map[model.Sequence]func() error),
 		in:              make(chan model.Message),
 		out:             make(chan model.Message),
 		closeCh:         make(chan interface{}),
 	}
 
-	// on first connect and periodically thereafter, check if a device is low on pre keys and request more
-	go conn.requestPreKeysIfNecessary()
+	if conn.service.checkPreKeysInterval > 0 {
+		// on first connect and periodically thereafter, check if a device is low on pre keys and request more
+		go conn.warnPreKeysLowIfNecessary()
+	}
 
 	// handle messages inbound to the client and outbound from the client in full duplex
 	go conn.handleInbound()
@@ -124,7 +136,7 @@ func (conn *ClientConnection) Close() {
 	})
 }
 
-func (conn *ClientConnection) requestPreKeysIfNecessary() {
+func (conn *ClientConnection) warnPreKeysLowIfNecessary() {
 	for {
 		numPreKeys, err := conn.service.db.PreKeysRemaining(conn.userID, conn.deviceID)
 		if err == nil && numPreKeys < conn.service.lowPreKeysLimit {
@@ -163,7 +175,6 @@ func (conn *ClientConnection) handleInbound() {
 
 func (conn *ClientConnection) handleOutbound() {
 	defer conn.Close()
-	defer conn.publisher.Close()
 
 	for msg := range conn.out {
 		var err error
@@ -240,30 +251,65 @@ func (conn *ClientConnection) handleRequestPreKeys(msg model.Message) {
 	}
 
 	// Get as many pre-keys as we can and handle the errors in here
-	preKeys, errs := conn.service.db.RequestPreKeys(request)
+	preKeys, err := conn.service.db.RequestPreKeys(request)
+	if err != nil {
+		conn.error(msg, err)
+		return
+	}
+
 	for _, preKey := range preKeys {
 		outMsg, err := conn.service.messageBuilder.NewPreKey(preKey)
 		if err != nil {
-			errs = append(errs, err)
-		} else {
-			conn.send(outMsg)
+			conn.error(msg, err)
+			return
 		}
-	}
-
-	// send all errors
-	for _, err := range errs {
-		conn.error(msg, err)
+		conn.send(outMsg)
 	}
 }
 
 func (conn *ClientConnection) handleUserMessage(msg model.Message) {
-	msg.UserMessage().SetToFrom(conn.userID)
-	err := conn.publisher.Publish(msg)
+	userMessage := msg.UserMessage()
+
+	// get to address
+	toUserID := userMessage.UserID()
+	toDeviceID := userMessage.DeviceID()
+
+	// update message with from address
+	userMessage.SetUserID(conn.userID)
+	userMessage.SetDeviceID(conn.deviceID)
+
+	// publish
+	publisher, err := conn.service.publisherFor(toUserID, toDeviceID)
+	if err != nil {
+		conn.error(msg, err)
+		return
+	}
+	err = publisher.Publish(msg)
 	if err != nil {
 		conn.error(msg, err)
 		return
 	}
 	conn.ack(msg)
+}
+
+func (service *Service) publisherFor(userID uuid.UUID, deviceID uint32) (broker.Publisher, error) {
+	topic := topicFor(userID, deviceID)
+	service.publisherCacheMx.Lock()
+	defer service.publisherCacheMx.Unlock()
+	_publisher, found := service.publisherCache.Get(topic)
+	if found {
+		return _publisher.(broker.Publisher), nil
+	}
+	publisher, err := service.broker.NewPublisher(topic)
+	if err != nil {
+		return nil, err
+	}
+	service.publisherCache.Add(topic, publisher)
+	return publisher, nil
+}
+
+func topicFor(userID uuid.UUID, deviceID uint32) string {
+	return fmt.Sprintf("%v|%d", userID.String(), deviceID)
 }
 
 func (conn *ClientConnection) ack(msg model.Message) {

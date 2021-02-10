@@ -25,11 +25,6 @@ var (
 		Code:        102,
 		Description: "unknown device",
 	}
-
-	ErrNoPreKeyAvailable = &Error{
-		Code:        201,
-		Description: "no prekey available for device",
-	}
 )
 
 // Error is a structured error message indicating that there was an error, encoded as follows:

@@ -131,6 +131,10 @@ func (b *MessageBuilder) NewRegister(msg *Register) (Message, error) {
 	return b.newMessagePacked(TypeRegister, msg)
 }
 
+func (b *MessageBuilder) NewUnregister() Message {
+	return b.NewMessage(TypeUnregister, nil)
+}
+
 // RequestPreKeys is a message that a client sends to request pre keys for all of a user's device about which it does not yet know. It is encoded with MessagePack.
 type RequestPreKeys struct {
 	UserID         string
@@ -199,22 +203,24 @@ func (msg PreKeysLow) NumKeysRequested() uint16 {
 	return enc.Uint16(msg)
 }
 
-// UserMessage is a message to/from another user, encoded as follows:
+// UserMessage is a message to/from another user and device, encoded as follows:
 //
-//   +---------+-------------+
-//   | To/From | Cipher Text |
-//   +---------+-------------+
-//   |   128   |   variable  |
-//   +---------+-------------+
+//   +---------+-----------+-------------+
+//   | User ID | Device ID | Cipher Text |
+//   +---------+-----------+-------------+
+//   |   128   |     4     |  variable   |
+//   +---------+-----------+-------------+
 //
-// To/From is a user ID (128 bit type 4 UUID)
+// User ID is a 128 bit type 4 UUID
+// Device ID is a uint32 in Little Endian byte order
 //
 type UserMessage []byte
 
-func (b *MessageBuilder) NewUserMessage(toFrom uuid.UUID, cipherText []byte) Message {
-	msg := make(UserMessage, 16+len(cipherText))
-	msg.SetToFrom(toFrom)
-	copy(msg[16:], cipherText)
+func (b *MessageBuilder) NewUserMessage(userID uuid.UUID, deviceID uint32, cipherText []byte) Message {
+	msg := make(UserMessage, 20+len(cipherText))
+	msg.SetUserID(userID)
+	msg.SetDeviceID(deviceID)
+	copy(msg[20:], cipherText)
 	return b.NewMessage(TypeUserMessage, msg)
 }
 
@@ -222,16 +228,24 @@ func (msg Message) UserMessage() UserMessage {
 	return UserMessage(msg.Payload())
 }
 
-func (msg UserMessage) ToFrom() uuid.UUID {
+func (msg UserMessage) UserID() uuid.UUID {
 	id := uuid.UUID{}
 	copy(id[:], msg[:16])
 	return id
 }
 
-func (msg UserMessage) CipherText() []byte {
-	return msg[16:]
+func (msg UserMessage) SetUserID(userID uuid.UUID) {
+	copy(msg, userID[:])
 }
 
-func (msg UserMessage) SetToFrom(id uuid.UUID) {
-	copy(msg, id[:])
+func (msg UserMessage) DeviceID() uint32 {
+	return enc.Uint32(msg[16:])
+}
+
+func (msg UserMessage) SetDeviceID(deviceID uint32) {
+	enc.PutUint32(msg[16:], deviceID)
+}
+
+func (msg UserMessage) CipherText() []byte {
+	return msg[20:]
 }

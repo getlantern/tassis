@@ -48,23 +48,26 @@ func (d *memdb) Unregister(userID uuid.UUID, deviceID uint32) error {
 	user := d.users[userID]
 	if user != nil {
 		delete(user, deviceID)
+		if len(user) == 0 {
+			delete(d.users, userID)
+		}
 	}
 
 	return nil
 }
 
-func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, []error) {
+func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, error) {
 	d.mx.Lock()
 	defer d.mx.Unlock()
 
 	userID, err := uuid.Parse(request.UserID)
 	if err != nil {
-		return nil, []error{model.ErrInvalidUserID}
+		return nil, model.ErrInvalidUserID
 	}
 
 	user := d.users[userID]
 	if user == nil {
-		return nil, []error{model.ErrUnknownUser}
+		return nil, model.ErrUnknownUser
 	}
 
 	isKnownDeviceID := func(deviceID uint32) bool {
@@ -77,27 +80,25 @@ func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, 
 	}
 
 	result := make([]*model.PreKey, 0)
-	errors := make([]error, 0)
 	for deviceID, registration := range user {
 		if !isKnownDeviceID(deviceID) {
-			if len(registration.PreKeys) == 0 {
-				errors = append(errors, model.ErrNoPreKeyAvailable)
-			} else {
-				preKey := registration.PreKeys[len(registration.PreKeys)-1]
+			var preKey []byte
+			if len(registration.PreKeys) > 0 {
+				preKey = registration.PreKeys[len(registration.PreKeys)-1]
 				registration.PreKeys = registration.PreKeys[:len(registration.PreKeys)-1]
-				result = append(result, &model.PreKey{
-					UserID:         request.UserID,
-					DeviceID:       deviceID,
-					RegistrationID: registration.RegistrationID,
-					IdentityKey:    registration.IdentityKey,
-					SignedPreKey:   registration.SignedPreKey,
-					PreKey:         preKey,
-				})
 			}
+			result = append(result, &model.PreKey{
+				UserID:         request.UserID,
+				DeviceID:       deviceID,
+				RegistrationID: registration.RegistrationID,
+				IdentityKey:    registration.IdentityKey,
+				SignedPreKey:   registration.SignedPreKey,
+				PreKey:         preKey,
+			})
 		}
 	}
 
-	return result, errors
+	return result, nil
 }
 
 func (d *memdb) PreKeysRemaining(userID uuid.UUID, deviceID uint32) (int, error) {

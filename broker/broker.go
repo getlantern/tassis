@@ -27,7 +27,7 @@ type Publisher interface {
 	Close()
 }
 
-// Broker is an interface for a topic-based pub/sub broker. This broker should lazily create topics on first user by
+// Broker is an interface for a topic-based pub/sub broker. This broker should lazily create topics on first use by
 // either subscribers or publishers.
 type Broker interface {
 	NewSubscriber(topicName string) (Subscriber, error)
