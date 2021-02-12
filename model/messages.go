@@ -25,7 +25,7 @@ const (
 )
 
 var (
-	enc = binary.LittleEndian // typical byte order for most CPU architectures
+	enc = binary.BigEndian // matches Java
 )
 
 type Version uint8
@@ -42,7 +42,7 @@ type Type uint8
 //   |    1    |     4    |  1   |        4       | <=4294967296 |
 //   +---------+----------+------+----------------+--------------+
 //
-// All multi-byte numeric values are encoded in Little Endian byte order.
+// All multi-byte numeric values are encoded in Big Endian byte order.
 //
 type Message []byte
 
@@ -201,7 +201,7 @@ func (b *MessageBuilder) NewPreKey(msg *PreKey) (Message, error) {
 //   |         2          |
 //   +--------------------+
 //
-// All multi-byte numeric values are encoded in Little Endian byte order.
+// All multi-byte numeric values are encoded in Big Endian byte order.
 //
 type PreKeysLow []byte
 
@@ -228,7 +228,7 @@ func (msg PreKeysLow) NumKeysRequested() uint16 {
 //   +---------+-----------+-------------+
 //
 // User ID is a 128 bit type 4 UUID
-// Device ID is a uint32 in Little Endian byte order
+// Device ID is a uint32 in Big Endian byte order
 //
 type UserMessage []byte
 
