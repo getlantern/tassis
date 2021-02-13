@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/getlantern/messaging-server/broker/membroker"
 	"github.com/getlantern/messaging-server/db/memdb"
@@ -41,10 +41,10 @@ func TestWebSocketClient(t *testing.T) {
 	defer l.Close()
 	go server.Serve(l)
 
-	testsupport.TestService(t, database, func(t *testing.T, userID uuid.UUID, deviceID uint32) testsupport.ClientConnectionLike {
-		conn, _, err := websocket.DefaultDialer.Dial(fmt.Sprintf("ws://%v/%v/%d", l.Addr().String(), userID.String(), deviceID), nil)
+	testsupport.TestService(t, database, func(t *testing.T, userID []byte, deviceID uint32) testsupport.ClientConnectionLike {
+		conn, _, err := websocket.DefaultDialer.Dial(fmt.Sprintf("ws://%v/%v/%d", l.Addr().String(), model.UserIDToString(userID), deviceID), nil)
 		require.NoError(t, err)
-		result := &websocketClientLike{conn, make(chan model.Message)}
+		result := &websocketClientLike{conn, make(chan *model.Message)}
 		go result.read()
 		return result
 	})
@@ -61,30 +61,41 @@ func TestWebSocketClient(t *testing.T) {
 
 type websocketClientLike struct {
 	conn *websocket.Conn
-	msgs chan model.Message
+	msgs chan *model.Message
 }
 
 func (client *websocketClientLike) read() {
 	defer close(client.msgs)
 
 	for {
-		_, msg, err := client.conn.ReadMessage()
+		_, b, err := client.conn.ReadMessage()
 		if err != nil {
 			log.Error(err)
 			return
 		}
-		client.msgs <- model.Message(msg)
+		msg := &model.Message{}
+		err = proto.Unmarshal(b, msg)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		client.msgs <- msg
 	}
 }
 
-func (client *websocketClientLike) Send(msg model.Message) {
-	err := client.conn.WriteMessage(websocket.BinaryMessage, msg)
+func (client *websocketClientLike) Send(msg *model.Message) {
+	b, err := proto.Marshal(msg)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	err = client.conn.WriteMessage(websocket.BinaryMessage, b)
 	if err != nil {
 		log.Error(err)
 	}
 }
 
-func (client *websocketClientLike) Receive() model.Message {
+func (client *websocketClientLike) Receive() *model.Message {
 	return <-client.msgs
 }
 

@@ -6,12 +6,10 @@ require (
 	github.com/getlantern/errors v1.0.1
 	github.com/getlantern/golog v0.0.0-20201105130739-9586b8bde3a9
 	github.com/getlantern/hidden v0.0.0-20201229170000-e66e7f878730 // indirect
-	github.com/getlantern/msgpack v3.1.4+incompatible
 	github.com/getlantern/ops v0.0.0-20200403153110-8476b16edcd6 // indirect
-	github.com/google/uuid v1.2.0
+	github.com/golang/protobuf v1.4.1
 	github.com/gorilla/websocket v1.4.2
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/stretchr/testify v1.7.0
-	google.golang.org/appengine v1.6.7 // indirect
-	gopkg.in/vmihailenco/msgpack.v2 v2.9.1 // indirect
+	google.golang.org/protobuf v1.25.0
 )

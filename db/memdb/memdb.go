@@ -5,34 +5,34 @@ import (
 	"bytes"
 	"sync"
 
-	"github.com/google/uuid"
-
 	"github.com/getlantern/messaging-server/db"
 	"github.com/getlantern/messaging-server/model"
 )
 
 func New() db.DB {
 	return &memdb{
-		users: make(map[uuid.UUID]map[uint32]*model.Register),
+		users: make(map[string]map[uint32]*model.Register),
 	}
 }
 
 type memdb struct {
-	users map[uuid.UUID]map[uint32]*model.Register
+	users map[string]map[uint32]*model.Register
 	mx    sync.Mutex
 }
 
-func (d *memdb) Register(userID uuid.UUID, deviceID uint32, registration *model.Register) error {
+func (d *memdb) Register(userID []byte, deviceID uint32, registration *model.Register) error {
+	userIDString := model.UserIDToString(userID)
+
 	d.mx.Lock()
 	defer d.mx.Unlock()
 
-	user := d.users[userID]
+	user := d.users[userIDString]
 	if user == nil {
 		user = make(map[uint32]*model.Register)
-		d.users[userID] = user
+		d.users[userIDString] = user
 	}
 	existing := user[deviceID]
-	if existing != nil && existing.RegistrationID == registration.RegistrationID && bytes.Equal(existing.IdentityKey, registration.IdentityKey) && bytes.Equal(existing.SignedPreKey, registration.SignedPreKey) {
+	if existing != nil && existing.RegistrationID == registration.RegistrationID && bytes.Equal(existing.SignedPreKey, registration.SignedPreKey) {
 		// Add pre-keys
 		existing.PreKeys = append(existing.PreKeys, registration.PreKeys...)
 	} else {
@@ -41,15 +41,17 @@ func (d *memdb) Register(userID uuid.UUID, deviceID uint32, registration *model.
 	return nil
 }
 
-func (d *memdb) Unregister(userID uuid.UUID, deviceID uint32) error {
+func (d *memdb) Unregister(userID []byte, deviceID uint32) error {
+	userIDString := model.UserIDToString(userID)
+
 	d.mx.Lock()
 	defer d.mx.Unlock()
 
-	user := d.users[userID]
+	user := d.users[userIDString]
 	if user != nil {
 		delete(user, deviceID)
 		if len(user) == 0 {
-			delete(d.users, userID)
+			delete(d.users, userIDString)
 		}
 	}
 
@@ -57,15 +59,12 @@ func (d *memdb) Unregister(userID uuid.UUID, deviceID uint32) error {
 }
 
 func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, error) {
+	userIDString := model.UserIDToString(request.UserID)
+
 	d.mx.Lock()
 	defer d.mx.Unlock()
 
-	userID, err := uuid.Parse(request.UserID)
-	if err != nil {
-		return nil, model.ErrInvalidUserID
-	}
-
-	user := d.users[userID]
+	user := d.users[userIDString]
 	if user == nil {
 		return nil, model.ErrUnknownUser
 	}
@@ -91,7 +90,6 @@ func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, 
 				UserID:         request.UserID,
 				DeviceID:       deviceID,
 				RegistrationID: registration.RegistrationID,
-				IdentityKey:    registration.IdentityKey,
 				SignedPreKey:   registration.SignedPreKey,
 				PreKey:         preKey,
 			})
@@ -101,11 +99,13 @@ func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, 
 	return result, nil
 }
 
-func (d *memdb) PreKeysRemaining(userID uuid.UUID, deviceID uint32) (int, error) {
+func (d *memdb) PreKeysRemaining(userID []byte, deviceID uint32) (int, error) {
+	userIDString := model.UserIDToString(userID)
+
 	d.mx.Lock()
 	defer d.mx.Unlock()
 
-	user := d.users[userID]
+	user := d.users[userIDString]
 	if user == nil {
 		return 0, model.ErrUnknownUser
 	}

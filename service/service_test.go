@@ -1,8 +1,6 @@
 package service
 
 import (
-	"github.com/google/uuid"
-
 	"github.com/getlantern/messaging-server/broker/membroker"
 	"github.com/getlantern/messaging-server/db/memdb"
 	"github.com/getlantern/messaging-server/testsupport"
@@ -23,7 +21,7 @@ func TestServiceInMemory(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	testsupport.TestService(t, database, func(t *testing.T, userID uuid.UUID, deviceID uint32) testsupport.ClientConnectionLike {
+	testsupport.TestService(t, database, func(t *testing.T, userID []byte, deviceID uint32) testsupport.ClientConnectionLike {
 		conn, err := srvc.Connect(userID, deviceID)
 		require.NoError(t, err)
 		return conn

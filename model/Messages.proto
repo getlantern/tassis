@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package signal;
+
+option go_package = "github.com/getlantern/messaging-server/model";
+
+message Ack {}
+
+message Error {
+    string name        = 1;
+    string description = 2;
+}
+
+message Register {
+    uint32         registrationID = 1;
+	bytes          signedPreKey   = 2;
+    repeated bytes preKeys        = 3;
+}
+
+message Unregister {}
+
+message RequestPreKeys {
+    bytes           UserID         = 1;
+    repeated uint32 knownDeviceIDs = 2;
+}
+
+message PreKey {
+    bytes  userID         = 1;
+	uint32 deviceID       = 2;
+	uint32 registrationID = 3;
+	bytes  signedPreKey   = 4;
+	bytes  preKey         = 5;
+}
+
+message PreKeysLow {
+    uint32 keysRequested = 1;
+}
+
+message Address {
+    bytes  userID   = 1;
+    uint32 deviceID = 2;
+}
+
+message OutboundMessage {
+    Address to                        = 1;
+    bytes   unidentifiedSenderMessage = 2;
+}
+
+message Message {
+    uint32 sequence = 1;
+
+    oneof payload {
+        Ack             ack             = 2;
+        Error           error           = 3;
+        Register        register        = 4;
+        Unregister      unregister      = 5;
+        RequestPreKeys  requestPreKeys  = 6;
+        PreKey          preKey          = 7;
+        PreKeysLow      preKeysLow      = 8;
+        OutboundMessage outboundMessage = 9;
+        bytes           inboundMessage = 10;
+    }
+}

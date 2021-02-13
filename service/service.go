@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	lru "github.com/hashicorp/golang-lru"
 
 	"github.com/getlantern/errors"
@@ -73,15 +72,15 @@ func New(opts *Opts) (*Service, error) {
 }
 
 type ClientConnection struct {
-	userID           uuid.UUID
+	userID           []byte
 	deviceID         uint32
 	srvc             *Service
 	subscriber       broker.Subscriber
 	messageBuilder   *model.MessageBuilder
-	unackedMessages  map[model.Sequence]func() error
+	unackedMessages  map[uint32]func() error
 	unackedMessageMx sync.Mutex
-	out              chan model.Message
-	in               chan model.Message
+	out              chan *model.Message
+	in               chan *model.Message
 	closeCh          chan interface{}
 	closeOnce        sync.Once
 }
@@ -89,7 +88,7 @@ type ClientConnection struct {
 // Connect connects a user to the service, returning a ClientConnection with
 // channels for sending messages to the service and receiving messages from it.
 // When the client wishes to disconnect, it should close the ClientConnection.
-func (srvc *Service) Connect(userID uuid.UUID, deviceID uint32) (*ClientConnection, error) {
+func (srvc *Service) Connect(userID []byte, deviceID uint32) (*ClientConnection, error) {
 	// TODO: instrument number of open clientConnections
 	// TODO: make sure web layer authenticates user somehow
 
@@ -104,9 +103,9 @@ func (srvc *Service) Connect(userID uuid.UUID, deviceID uint32) (*ClientConnecti
 		srvc:            srvc,
 		subscriber:      subscriber,
 		messageBuilder:  &model.MessageBuilder{},
-		unackedMessages: make(map[model.Sequence]func() error),
-		out:             make(chan model.Message),
-		in:              make(chan model.Message),
+		unackedMessages: make(map[uint32]func() error),
+		out:             make(chan *model.Message),
+		in:              make(chan *model.Message),
 		closeCh:         make(chan interface{}),
 	}
 
@@ -122,19 +121,19 @@ func (srvc *Service) Connect(userID uuid.UUID, deviceID uint32) (*ClientConnecti
 	return conn, nil
 }
 
-func (conn *ClientConnection) Out() chan<- model.Message {
+func (conn *ClientConnection) Out() chan<- *model.Message {
 	return conn.out
 }
 
-func (conn *ClientConnection) Send(msg model.Message) {
+func (conn *ClientConnection) Send(msg *model.Message) {
 	conn.out <- msg
 }
 
-func (conn *ClientConnection) In() <-chan model.Message {
+func (conn *ClientConnection) In() <-chan *model.Message {
 	return conn.in
 }
 
-func (conn *ClientConnection) Receive() model.Message {
+func (conn *ClientConnection) Receive() *model.Message {
 	return <-conn.in
 }
 
@@ -162,7 +161,7 @@ func (conn *ClientConnection) warnPreKeysLowIfNecessary() {
 	for {
 		numPreKeys, err := conn.srvc.db.PreKeysRemaining(conn.userID, conn.deviceID)
 		if err == nil && numPreKeys < conn.srvc.lowPreKeysLimit {
-			conn.send(conn.messageBuilder.NewPreKeysLow(uint16(conn.srvc.numPreKeysToRequest)))
+			conn.send(conn.messageBuilder.Build(&model.Message_PreKeysLow{&model.PreKeysLow{KeysRequested: uint32(conn.srvc.numPreKeysToRequest)}}))
 		}
 		select {
 		case <-time.After(conn.srvc.checkPreKeysInterval):
@@ -183,13 +182,10 @@ func (conn *ClientConnection) handleInbound() {
 		case <-conn.closeCh:
 			return
 		case brokerMsg := <-ch:
-			msg := model.Message(brokerMsg.Data())
-			if msg.Type() == model.TypeUserMessage {
-				conn.messageBuilder.AttachNextSequence(msg)
-				conn.unackedMessageMx.Lock()
-				conn.unackedMessages[msg.Sequence()] = brokerMsg.Acker()
-				conn.unackedMessageMx.Unlock()
-			}
+			msg := conn.messageBuilder.Build(&model.Message_InboundMessage{InboundMessage: brokerMsg.Data()})
+			conn.unackedMessageMx.Lock()
+			conn.unackedMessages[msg.Sequence] = brokerMsg.Acker()
+			conn.unackedMessageMx.Unlock()
 			conn.in <- msg
 		}
 	}
@@ -200,27 +196,27 @@ func (conn *ClientConnection) handleOutbound() {
 
 	for msg := range conn.out {
 		var err error
-		switch msg.Type() {
-		case model.TypeACK:
+		switch msg.Payload.(type) {
+		case *model.Message_Ack:
 			conn.handleACK(msg)
-		case model.TypeRegister:
+		case *model.Message_Register:
 			conn.handleRegister(msg)
-		case model.TypeUnregister:
+		case *model.Message_Unregister:
 			conn.handleUnregister(msg)
-		case model.TypeRequestPreKeys:
+		case *model.Message_RequestPreKeys:
 			conn.handleRequestPreKeys(msg)
-		case model.TypeUserMessage:
-			conn.handleUserMessage(msg)
+		case *model.Message_OutboundMessage:
+			conn.handleOutboundMessage(msg)
 		}
 		if err != nil {
 			log.Error(err)
-			conn.in <- conn.messageBuilder.NewError(msg.Sequence(), model.TypedError(err))
+			conn.in <- conn.messageBuilder.NewError(msg, model.TypedError(err))
 		}
 	}
 }
 
-func (conn *ClientConnection) handleACK(msg model.Message) {
-	sequence := msg.Sequence()
+func (conn *ClientConnection) handleACK(msg *model.Message) {
+	sequence := msg.Sequence
 	conn.unackedMessageMx.Lock()
 	acker, found := conn.unackedMessages[sequence]
 	conn.unackedMessageMx.Unlock()
@@ -240,14 +236,9 @@ func (conn *ClientConnection) handleACK(msg model.Message) {
 	conn.unackedMessageMx.Unlock()
 }
 
-func (conn *ClientConnection) handleRegister(msg model.Message) {
-	register, err := msg.Register()
-	if err != nil {
-		conn.error(msg, err)
-		return
-	}
-
-	err = conn.srvc.db.Register(conn.userID, conn.deviceID, register)
+func (conn *ClientConnection) handleRegister(msg *model.Message) {
+	register := msg.GetRegister()
+	err := conn.srvc.db.Register(conn.userID, conn.deviceID, register)
 	if err != nil {
 		conn.error(msg, err)
 		return
@@ -256,7 +247,7 @@ func (conn *ClientConnection) handleRegister(msg model.Message) {
 	conn.ack(msg)
 }
 
-func (conn *ClientConnection) handleUnregister(msg model.Message) {
+func (conn *ClientConnection) handleUnregister(msg *model.Message) {
 	err := conn.srvc.db.Unregister(conn.userID, conn.deviceID)
 	if err != nil {
 		conn.error(msg, err)
@@ -265,12 +256,8 @@ func (conn *ClientConnection) handleUnregister(msg model.Message) {
 	conn.ack(msg)
 }
 
-func (conn *ClientConnection) handleRequestPreKeys(msg model.Message) {
-	request, err := msg.RequestPreKeys()
-	if err != nil {
-		conn.error(msg, err)
-		return
-	}
+func (conn *ClientConnection) handleRequestPreKeys(msg *model.Message) {
+	request := msg.GetRequestPreKeys()
 
 	// Get as many pre-keys as we can and handle the errors in here
 	preKeys, err := conn.srvc.db.RequestPreKeys(request)
@@ -280,33 +267,21 @@ func (conn *ClientConnection) handleRequestPreKeys(msg model.Message) {
 	}
 
 	for _, preKey := range preKeys {
-		outMsg, err := conn.messageBuilder.NewPreKey(preKey)
-		if err != nil {
-			conn.error(msg, err)
-			return
-		}
+		outMsg := conn.messageBuilder.Build(&model.Message_PreKey{preKey})
 		conn.send(outMsg)
 	}
 }
 
-func (conn *ClientConnection) handleUserMessage(msg model.Message) {
-	userMessage := msg.UserMessage()
-
-	// get to address
-	toUserID := userMessage.UserID()
-	toDeviceID := userMessage.DeviceID()
-
-	// update message with from address
-	userMessage.SetUserID(conn.userID)
-	userMessage.SetDeviceID(conn.deviceID)
+func (conn *ClientConnection) handleOutboundMessage(msg *model.Message) {
+	outboundMessage := msg.GetOutboundMessage()
 
 	// publish
-	publisher, err := conn.srvc.publisherFor(toUserID, toDeviceID)
+	publisher, err := conn.srvc.publisherFor(outboundMessage.To)
 	if err != nil {
 		conn.error(msg, err)
 		return
 	}
-	err = publisher.Publish(msg)
+	err = publisher.Publish(outboundMessage.GetUnidentifiedSenderMessage())
 	if err != nil {
 		conn.error(msg, err)
 		return
@@ -314,8 +289,8 @@ func (conn *ClientConnection) handleUserMessage(msg model.Message) {
 	conn.ack(msg)
 }
 
-func (srvc *Service) publisherFor(userID uuid.UUID, deviceID uint32) (broker.Publisher, error) {
-	topic := topicFor(userID, deviceID)
+func (srvc *Service) publisherFor(address *model.Address) (broker.Publisher, error) {
+	topic := topicFor(address.UserID, address.DeviceID)
 	srvc.publisherCacheMx.Lock()
 	defer srvc.publisherCacheMx.Unlock()
 	_publisher, found := srvc.publisherCache.Get(topic)
@@ -330,19 +305,19 @@ func (srvc *Service) publisherFor(userID uuid.UUID, deviceID uint32) (broker.Pub
 	return publisher, nil
 }
 
-func topicFor(userID uuid.UUID, deviceID uint32) string {
-	return fmt.Sprintf("%v|%d", userID.String(), deviceID)
+func topicFor(userID []byte, deviceID uint32) string {
+	return fmt.Sprintf("%v|%d", model.UserIDToString(userID), deviceID)
 }
 
-func (conn *ClientConnection) ack(msg model.Message) {
-	conn.send(conn.messageBuilder.Ack(msg))
+func (conn *ClientConnection) ack(msg *model.Message) {
+	conn.send(conn.messageBuilder.NewAck(msg))
 }
 
-func (conn *ClientConnection) error(msg model.Message, err error) {
+func (conn *ClientConnection) error(msg *model.Message, err error) {
 	log.Error(err)
-	conn.send(conn.messageBuilder.NewError(msg.Sequence(), model.TypedError(err)))
+	conn.send(conn.messageBuilder.NewError(msg, model.TypedError(err)))
 }
 
-func (conn *ClientConnection) send(msg model.Message) {
+func (conn *ClientConnection) send(msg *model.Message) {
 	conn.in <- msg
 }

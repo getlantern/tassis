@@ -7,11 +7,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/getlantern/golog"
 
+	"github.com/getlantern/messaging-server/model"
 	"github.com/getlantern/messaging-server/service"
 )
 
@@ -52,7 +53,7 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	userID, err := uuid.Parse(pathParts[0])
+	userID, err := model.StringToUserID(pathParts[0])
 	if err != nil {
 		log.Errorf("unable to parse userID %v: %v", pathParts[0], err)
 		resp.WriteHeader(http.StatusBadRequest)
@@ -97,7 +98,12 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		for {
 			select {
 			case msg := <-in:
-				err := conn.WriteMessage(websocket.BinaryMessage, msg)
+				b, err := proto.Marshal(msg)
+				if err != nil {
+					log.Errorf("error marshalling message: %v", err)
+					continue
+				}
+				err = conn.WriteMessage(websocket.BinaryMessage, b)
 				if err != nil {
 					log.Debugf("error writing: %v", err)
 					return
@@ -114,12 +120,18 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 
 		out := client.Out()
 		for {
-			_, msg, err := conn.ReadMessage()
+			_, b, err := conn.ReadMessage()
 			if err != nil {
 				if !websocket.IsCloseError(err) {
 					log.Debugf("error reading: %v", err)
 				}
 				return
+			}
+			msg := &model.Message{}
+			err = proto.Unmarshal(b, msg)
+			if err != nil {
+				log.Errorf("error unmarshalling message: %v", err)
+				continue
 			}
 			out <- msg
 		}
