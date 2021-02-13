@@ -17,8 +17,17 @@ message Address {
 }
 
 message Login {
-    Address address   = 1;
-    bytes   signature = 2;
+    Address address = 1;
+    bytes   nonce   = 2;
+}
+
+message AuthChallenge {
+    bytes nonce = 1;
+}
+
+message AuthResponse {
+    bytes login     = 1;
+    bytes signature = 2;
 }
 
 message Register {
@@ -57,13 +66,14 @@ message Message {
     oneof payload {
         Ack             ack             =  2;
         Error           error           =  3;
-        Login           login           =  4;
-        Register        register        =  5;
-        Unregister      unregister      =  6;
-        RequestPreKeys  requestPreKeys  =  7;
-        PreKey          preKey          =  8;
-        PreKeysLow      preKeysLow      =  9;
-        OutboundMessage outboundMessage = 10;
-        bytes           inboundMessage  = 11;
+        AuthChallenge   authChallenge   =  4;
+        AuthResponse   authResponse    =  5;
+        Register        register        =  6;
+        Unregister      unregister      =  7;
+        RequestPreKeys  requestPreKeys  =  8;
+        PreKey          preKey          =  9;
+        PreKeysLow      preKeysLow      = 10;
+        OutboundMessage outboundMessage = 11;
+        bytes           inboundMessage  = 12;
     }
 }

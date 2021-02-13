@@ -1,12 +1,16 @@
 package service
 
 import (
+	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/getlantern/golog"
 
@@ -72,6 +76,7 @@ func New(opts *Opts) (*Service, error) {
 }
 
 type ClientConnection struct {
+	authNonce        []byte
 	userID           atomic.Value
 	deviceID         atomic.Value
 	srvc             *Service
@@ -99,7 +104,14 @@ func (srvc *Service) Connect() (*ClientConnection, error) {
 	// TODO: instrument number of open clientConnections
 	// TODO: rate limit, especially on unauthenticated connections
 
+	authNonce := make([]byte, 32)
+	_, err := rand.Read(authNonce)
+	if err != nil {
+		return nil, err
+	}
+
 	conn := &ClientConnection{
+		authNonce:       authNonce,
 		srvc:            srvc,
 		messageBuilder:  &model.MessageBuilder{},
 		unackedMessages: make(map[uint32]func() error),
@@ -110,6 +122,7 @@ func (srvc *Service) Connect() (*ClientConnection, error) {
 
 	// handle messages outbound from the client
 	go conn.handleOutbound()
+	go conn.sendAuthChallenge()
 
 	return conn, nil
 }
@@ -131,7 +144,7 @@ func (conn *ClientConnection) getDeviceID() uint32 {
 }
 
 func (conn *ClientConnection) isAuthenticated() bool {
-	return len(conn.getUserID()) == 0
+	return len(conn.getUserID()) != 0
 }
 
 func (conn *ClientConnection) Out() chan<- *model.Message {
@@ -221,33 +234,33 @@ func (conn *ClientConnection) handleOutbound() {
 		switch msg.Payload.(type) {
 		case *model.Message_Ack:
 			conn.handleACK(msg)
-		case *model.Message_Login:
-			if !conn.isAuthenticated() {
-				err = model.ErrAuthenticationRequired
-			} else {
-				conn.handleLogin(msg)
-			}
-		case *model.Message_Register:
+		case *model.Message_AuthResponse:
 			if conn.isAuthenticated() {
 				err = model.ErrNonAnonymous
+			} else {
+				conn.handleAuthResponse(msg)
+			}
+		case *model.Message_Register:
+			if !conn.isAuthenticated() {
+				err = model.ErrUnauthorized
 			} else {
 				conn.handleRegister(msg)
 			}
 		case *model.Message_Unregister:
-			if conn.isAuthenticated() {
-				err = model.ErrNonAnonymous
+			if !conn.isAuthenticated() {
+				err = model.ErrUnauthorized
 			} else {
 				conn.handleUnregister(msg)
 			}
 		case *model.Message_RequestPreKeys:
-			if !conn.isAuthenticated() {
-				err = model.ErrAuthenticationRequired
+			if conn.isAuthenticated() {
+				err = model.ErrNonAnonymous
 			} else {
 				conn.handleRequestPreKeys(msg)
 			}
 		case *model.Message_OutboundMessage:
-			if !conn.isAuthenticated() {
-				err = model.ErrAuthenticationRequired
+			if conn.isAuthenticated() {
+				err = model.ErrNonAnonymous
 			} else {
 				conn.handleOutboundMessage(msg)
 			}
@@ -259,16 +272,45 @@ func (conn *ClientConnection) handleOutbound() {
 	}
 }
 
-func (conn *ClientConnection) handleLogin(msg *model.Message) {
-	// TODO: actually authenticate
-	login := msg.GetLogin()
-	conn.userID.Store(login.Address.UserID)
-	conn.deviceID.Store(login.Address.DeviceID)
+func (conn *ClientConnection) sendAuthChallenge() {
+	conn.in <- conn.messageBuilder.Build(&model.Message_AuthChallenge{&model.AuthChallenge{Nonce: conn.authNonce}})
+}
 
-	err := conn.startHandlingInbound()
+func (conn *ClientConnection) handleAuthResponse(msg *model.Message) {
+	// unpack auth response
+	authResponse := msg.GetAuthResponse()
+	login := &model.Login{}
+	err := proto.Unmarshal(authResponse.Login, login)
 	if err != nil {
 		conn.error(msg, err)
 		conn.Close()
+		return
+	}
+
+	// verify nonce
+	if !bytes.Equal(conn.authNonce, login.Nonce) {
+		conn.error(msg, model.ErrUnauthorized)
+		conn.Close()
+		return
+	}
+
+	// verify signature
+	address := login.Address
+	publicKey := ed25519.PublicKey(address.UserID)
+	if !ed25519.Verify(publicKey, authResponse.Login, authResponse.Signature) {
+		conn.error(msg, model.ErrUnauthorized)
+		conn.Close()
+		return
+	}
+
+	conn.userID.Store(address.UserID)
+	conn.deviceID.Store(address.DeviceID)
+
+	err = conn.startHandlingInbound()
+	if err != nil {
+		conn.error(msg, err)
+		conn.Close()
+		return
 	}
 	if conn.srvc.checkPreKeysInterval > 0 {
 		// on first connect and periodically thereafter, check if a device is low on pre keys and request more

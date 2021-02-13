@@ -27,12 +27,12 @@ var (
 		Name: "unknown_device",
 	}
 
-	ErrNonAnonymous = &Error{
-		Name: "attempted_anonymous_op_on_authenticated_connection",
+	ErrUnauthorized = &Error{
+		Name: "unauthorized",
 	}
 
-	ErrAuthenticationRequired = &Error{
-		Name: "op_requires_authentication",
+	ErrNonAnonymous = &Error{
+		Name: "attempted_anonymous_op_on_authenticated_connection",
 	}
 
 	ErrUnableToOpenSubscriber = &Error{

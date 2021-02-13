@@ -96,7 +96,7 @@ Simple in-memory implementations of both are provided for testing. The database 
 ## Security
 
 ### Authentication
-messaging-server supports both authenticated and unauthenticated connections. To authenticate, a client sends a login message with their Address and a signature for that address. If the signature is correct based on the sender's public key (which is also their userID), then the user is authenticated.
+messaging-server supports both authenticated and unauthenticated connections. At the beginning of every connection, the server sends an authentication challenge to the client with a nonce. Clients that wish to remain anonymous can simply ignore the challenge. Clients that wish to authenticate response with theri Address (UserID and DeviceID), the nonce from the challenge, and a signature over the Address+Nonce. The server then verifies that the nonce matches the expected value for this connection and that the signature is correct correct based on the sender's public key (which is also their userID). If yes, the user is authenticated. If not, the server returns an error and closes the connection.
 
 Clients request pre-keys and send messages on unauthenticated connections in order to protect their anonymity. All other key management operations are performed on an authenticated connection.
 
