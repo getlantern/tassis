@@ -30,6 +30,9 @@ Each device is identified by an address.
 ### Address
 The unique combination of UserID and DeviceID constitutes an address.
 
+### Sealed Sender
+A scheme for allowing senders to send messages without intermediaries know who sent the message.
+
 Signal clients use the [X3DH key agreement protocol](https://www.signal.org/docs/specifications/x3dh/) to establish encrypted session, which requires server-facilitiated exchange of key information.
 
 messaging-server is ignorant of Signal's encryption algorithms and simply stores the key information for use by Signal's client-side encryption logic as opaque data.
@@ -91,6 +94,11 @@ messaging-server needs a [database](db/db.go) for storing key distribution infor
 Simple in-memory implementations of both are provided for testing. The database and broker to be used for production still need to be selected, though [DynamoDB](https://aws.amazon.com/dynamodb/) and [Apache Pulsar](https://streamnative.io/cloud/hosted) are current front-runners.
 
 ## Security
+
+### Authentication
+messaging-server supports both authenticated and unauthenticated connections. To authenticate, a client sends a login message with their Address and a signature for that address. If the signature is correct based on the sender's public key (which is also their userID), then the user is authenticated.
+
+Clients request pre-keys and send messages on unauthenticated connections in order to protect their anonymity. All other key management operations are performed on an authenticated connection.
 
 ### Key Distribution
 In principle, messaging-server only provides a convenience for key-distribution, and it's encumbent on clients and end-users to verify key material for themselves, not least because they shouldn't blindly trust messaging-server itself.

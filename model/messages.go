@@ -26,6 +26,18 @@ var (
 	ErrUnknownDevice = &Error{
 		Name: "unknown_device",
 	}
+
+	ErrNonAnonymous = &Error{
+		Name: "attempted_anonymous_op_on_authenticated_connection",
+	}
+
+	ErrAuthenticationRequired = &Error{
+		Name: "op_requires_authentication",
+	}
+
+	ErrUnableToOpenSubscriber = &Error{
+		Name: "unable_to_open_subscriber",
+	}
 )
 
 func (err *Error) Error() string {
@@ -37,6 +49,10 @@ func (err *Error) WithDescription(description string) *Error {
 		Name:        err.Name,
 		Description: description,
 	}
+}
+
+func (err *Error) WithError(other error) *Error {
+	return err.WithDescription(other.Error())
 }
 
 func (err *Error) Equals(other *Error) bool {

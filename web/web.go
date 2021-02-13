@@ -2,8 +2,6 @@ package web
 
 import (
 	"net/http"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -47,28 +45,13 @@ func (h *handler) ActiveConnections() int {
 }
 
 func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
-	pathParts := strings.Split(strings.Trim(req.URL.Path, "/"), "/")
-	if len(pathParts) != 2 {
-		resp.WriteHeader(http.StatusBadRequest)
+	if req.RequestURI != "/api" {
+		log.Errorf("Unknown request URI: %v", req.RequestURI)
+		resp.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	userID, err := model.StringToUserID(pathParts[0])
-	if err != nil {
-		log.Errorf("unable to parse userID %v: %v", pathParts[0], err)
-		resp.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	_deviceID, err := strconv.ParseInt(pathParts[1], 10, 64)
-	if err != nil {
-		log.Errorf("unable to parse deviceID %v: %v", pathParts[1], err)
-		resp.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	deviceID := uint32(_deviceID)
-
-	client, err := h.srvc.Connect(userID, deviceID)
+	client, err := h.srvc.Connect()
 	if err != nil {
 		log.Errorf("unable to connect to service: %v", err)
 		resp.WriteHeader(http.StatusInternalServerError)

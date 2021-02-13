@@ -41,8 +41,10 @@ func TestWebSocketClient(t *testing.T) {
 	defer l.Close()
 	go server.Serve(l)
 
-	testsupport.TestService(t, database, func(t *testing.T, userID []byte, deviceID uint32) testsupport.ClientConnectionLike {
-		conn, _, err := websocket.DefaultDialer.Dial(fmt.Sprintf("ws://%v/%v/%d", l.Addr().String(), model.UserIDToString(userID), deviceID), nil)
+	testsupport.TestService(t, database, func(t *testing.T) testsupport.ClientConnectionLike {
+		url := fmt.Sprintf("ws://%s/api", l.Addr().String())
+		t.Logf("connecting to %v", url)
+		conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 		require.NoError(t, err)
 		result := &websocketClientLike{conn, make(chan *model.Message)}
 		go result.read()

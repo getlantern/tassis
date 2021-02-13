@@ -3,11 +3,11 @@ package service
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
 
-	"github.com/getlantern/errors"
 	"github.com/getlantern/golog"
 
 	"github.com/getlantern/messaging-server/broker"
@@ -72,10 +72,9 @@ func New(opts *Opts) (*Service, error) {
 }
 
 type ClientConnection struct {
-	userID           []byte
-	deviceID         uint32
+	userID           atomic.Value
+	deviceID         atomic.Value
 	srvc             *Service
-	subscriber       broker.Subscriber
 	messageBuilder   *model.MessageBuilder
 	unackedMessages  map[uint32]func() error
 	unackedMessageMx sync.Mutex
@@ -88,20 +87,20 @@ type ClientConnection struct {
 // Connect connects a user to the service, returning a ClientConnection with
 // channels for sending messages to the service and receiving messages from it.
 // When the client wishes to disconnect, it should close the ClientConnection.
-func (srvc *Service) Connect(userID []byte, deviceID uint32) (*ClientConnection, error) {
+//
+// Until the client sends a Login message, the connection will be unauthenticated and anonymous.
+// An unauthenticated connection can be used only for requesting pre-keys and
+// sending outbound messages with a sealed sender.
+//
+// A client my log in by sending a login message signed by their public key.
+// Once authenticated, a connection can be used for everything except for sending
+// messages or retrieving pre-keys, which are required to be performed anonymously.
+func (srvc *Service) Connect() (*ClientConnection, error) {
 	// TODO: instrument number of open clientConnections
-	// TODO: make sure web layer authenticates user somehow
-
-	subscriber, err := srvc.broker.NewSubscriber(topicFor(userID, deviceID))
-	if err != nil {
-		return nil, errors.New("unable to open subscriber: %v", err)
-	}
+	// TODO: rate limit, especially on unauthenticated connections
 
 	conn := &ClientConnection{
-		userID:          userID,
-		deviceID:        deviceID,
 		srvc:            srvc,
-		subscriber:      subscriber,
 		messageBuilder:  &model.MessageBuilder{},
 		unackedMessages: make(map[uint32]func() error),
 		out:             make(chan *model.Message),
@@ -109,16 +108,30 @@ func (srvc *Service) Connect(userID []byte, deviceID uint32) (*ClientConnection,
 		closeCh:         make(chan interface{}),
 	}
 
-	if conn.srvc.checkPreKeysInterval > 0 {
-		// on first connect and periodically thereafter, check if a device is low on pre keys and request more
-		go conn.warnPreKeysLowIfNecessary()
-	}
-
-	// handle messages outbound from the client and inbound to the client in full duplex
+	// handle messages outbound from the client
 	go conn.handleOutbound()
-	go conn.handleInbound()
 
 	return conn, nil
+}
+
+func (conn *ClientConnection) getUserID() []byte {
+	userID := conn.userID.Load()
+	if userID == nil {
+		return nil
+	}
+	return userID.([]byte)
+}
+
+func (conn *ClientConnection) getDeviceID() uint32 {
+	deviceID := conn.deviceID.Load()
+	if deviceID == nil {
+		return 0
+	}
+	return deviceID.(uint32)
+}
+
+func (conn *ClientConnection) isAuthenticated() bool {
+	return len(conn.getUserID()) == 0
 }
 
 func (conn *ClientConnection) Out() chan<- *model.Message {
@@ -159,7 +172,7 @@ func (conn *ClientConnection) Close() {
 
 func (conn *ClientConnection) warnPreKeysLowIfNecessary() {
 	for {
-		numPreKeys, err := conn.srvc.db.PreKeysRemaining(conn.userID, conn.deviceID)
+		numPreKeys, err := conn.srvc.db.PreKeysRemaining(conn.getUserID(), conn.getDeviceID())
 		if err == nil && numPreKeys < conn.srvc.lowPreKeysLimit {
 			conn.send(conn.messageBuilder.Build(&model.Message_PreKeysLow{&model.PreKeysLow{KeysRequested: uint32(conn.srvc.numPreKeysToRequest)}}))
 		}
@@ -173,22 +186,31 @@ func (conn *ClientConnection) warnPreKeysLowIfNecessary() {
 	}
 }
 
-func (conn *ClientConnection) handleInbound() {
-	defer conn.subscriber.Close()
-
-	ch := conn.subscriber.Messages()
-	for {
-		select {
-		case <-conn.closeCh:
-			return
-		case brokerMsg := <-ch:
-			msg := conn.messageBuilder.Build(&model.Message_InboundMessage{InboundMessage: brokerMsg.Data()})
-			conn.unackedMessageMx.Lock()
-			conn.unackedMessages[msg.Sequence] = brokerMsg.Acker()
-			conn.unackedMessageMx.Unlock()
-			conn.in <- msg
-		}
+func (conn *ClientConnection) startHandlingInbound() error {
+	subscriber, err := conn.srvc.broker.NewSubscriber(topicFor(conn.getUserID(), conn.getDeviceID()))
+	if err != nil {
+		return model.ErrUnableToOpenSubscriber.WithError(err)
 	}
+
+	go func() {
+		defer subscriber.Close()
+
+		ch := subscriber.Messages()
+		for {
+			select {
+			case <-conn.closeCh:
+				return
+			case brokerMsg := <-ch:
+				msg := conn.messageBuilder.Build(&model.Message_InboundMessage{InboundMessage: brokerMsg.Data()})
+				conn.unackedMessageMx.Lock()
+				conn.unackedMessages[msg.Sequence] = brokerMsg.Acker()
+				conn.unackedMessageMx.Unlock()
+				conn.in <- msg
+			}
+		}
+	}()
+
+	return nil
 }
 
 func (conn *ClientConnection) handleOutbound() {
@@ -199,20 +221,61 @@ func (conn *ClientConnection) handleOutbound() {
 		switch msg.Payload.(type) {
 		case *model.Message_Ack:
 			conn.handleACK(msg)
+		case *model.Message_Login:
+			if !conn.isAuthenticated() {
+				err = model.ErrAuthenticationRequired
+			} else {
+				conn.handleLogin(msg)
+			}
 		case *model.Message_Register:
-			conn.handleRegister(msg)
+			if conn.isAuthenticated() {
+				err = model.ErrNonAnonymous
+			} else {
+				conn.handleRegister(msg)
+			}
 		case *model.Message_Unregister:
-			conn.handleUnregister(msg)
+			if conn.isAuthenticated() {
+				err = model.ErrNonAnonymous
+			} else {
+				conn.handleUnregister(msg)
+			}
 		case *model.Message_RequestPreKeys:
-			conn.handleRequestPreKeys(msg)
+			if !conn.isAuthenticated() {
+				err = model.ErrAuthenticationRequired
+			} else {
+				conn.handleRequestPreKeys(msg)
+			}
 		case *model.Message_OutboundMessage:
-			conn.handleOutboundMessage(msg)
+			if !conn.isAuthenticated() {
+				err = model.ErrAuthenticationRequired
+			} else {
+				conn.handleOutboundMessage(msg)
+			}
 		}
 		if err != nil {
 			log.Error(err)
 			conn.in <- conn.messageBuilder.NewError(msg, model.TypedError(err))
 		}
 	}
+}
+
+func (conn *ClientConnection) handleLogin(msg *model.Message) {
+	// TODO: actually authenticate
+	login := msg.GetLogin()
+	conn.userID.Store(login.Address.UserID)
+	conn.deviceID.Store(login.Address.DeviceID)
+
+	err := conn.startHandlingInbound()
+	if err != nil {
+		conn.error(msg, err)
+		conn.Close()
+	}
+	if conn.srvc.checkPreKeysInterval > 0 {
+		// on first connect and periodically thereafter, check if a device is low on pre keys and request more
+		go conn.warnPreKeysLowIfNecessary()
+	}
+
+	conn.ack(msg)
 }
 
 func (conn *ClientConnection) handleACK(msg *model.Message) {
@@ -238,7 +301,7 @@ func (conn *ClientConnection) handleACK(msg *model.Message) {
 
 func (conn *ClientConnection) handleRegister(msg *model.Message) {
 	register := msg.GetRegister()
-	err := conn.srvc.db.Register(conn.userID, conn.deviceID, register)
+	err := conn.srvc.db.Register(conn.getUserID(), conn.getDeviceID(), register)
 	if err != nil {
 		conn.error(msg, err)
 		return
@@ -248,7 +311,7 @@ func (conn *ClientConnection) handleRegister(msg *model.Message) {
 }
 
 func (conn *ClientConnection) handleUnregister(msg *model.Message) {
-	err := conn.srvc.db.Unregister(conn.userID, conn.deviceID)
+	err := conn.srvc.db.Unregister(conn.getUserID(), conn.getDeviceID())
 	if err != nil {
 		conn.error(msg, err)
 		return

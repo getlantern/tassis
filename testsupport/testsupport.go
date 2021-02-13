@@ -30,7 +30,7 @@ type ClientConnectionLike interface {
 	Close()
 }
 
-func TestService(t *testing.T, database db.DB, connect func(t *testing.T, userID []byte, deviceID uint32) ClientConnectionLike) {
+func TestService(t *testing.T, database db.DB, connect func(t *testing.T) ClientConnectionLike) {
 	userA := make([]byte, 32)
 	rand.Read(userA)
 	deviceA1 := uint32(11)
@@ -41,17 +41,28 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T, userID
 	deviceB1 := uint32(21)
 	deviceB2 := uint32(22)
 
-	clientA1 := connect(t, userA, deviceA1)
-	defer clientA1.Close()
+	// roundTrip sends a message to the server and verifies that a corresponding ACK
+	// is received.
+	roundTrip := func(t *testing.T, client ClientConnectionLike, msg *model.Message) {
+		client.Send(msg)
+		ack := client.Receive()
+		require.Equal(t, msg.Sequence, ack.Sequence)
+	}
 
-	clientA2 := connect(t, userA, deviceA2)
-	defer clientA2.Close()
-
-	clientB1 := connect(t, userB, deviceB1)
-	defer clientB1.Close()
-
-	clientB2 := connect(t, userB, deviceB2)
-	defer clientB2.Close()
+	// login logs a client in
+	login := func(userID []byte, deviceID uint32) ClientConnectionLike {
+		client := connect(t)
+		msg := messageBuilder.Build(
+			&model.Message_Login{
+				Login: &model.Login{
+					Address: &model.Address{
+						UserID:   userID,
+						DeviceID: deviceID},
+				},
+			})
+		roundTrip(t, client, msg)
+		return client
+	}
 
 	// register builds a registration message for registering key material
 	register := func(registrationID uint32, signedPreKey string, preKeys ...uint8) *model.Message {
@@ -76,13 +87,25 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T, userID
 		return messageBuilder.Build(&model.Message_RequestPreKeys{req})
 	}
 
-	// roundTrip sends a message to the server and verifies that a corresponding ACK
-	// is received.
-	roundTrip := func(t *testing.T, client ClientConnectionLike, msg *model.Message) {
-		client.Send(msg)
-		ack := client.Receive()
-		require.Equal(t, msg.Sequence, ack.Sequence)
-	}
+	clientA1 := login(userA, deviceA1)
+	defer clientA1.Close()
+	clientA1Anonymous := connect(t)
+	defer clientA1Anonymous.Close()
+
+	clientA2 := login(userA, deviceA2)
+	defer clientA2.Close()
+	clientA2Anonymous := connect(t)
+	defer clientA2Anonymous.Close()
+
+	clientB1 := login(userB, deviceB1)
+	defer clientB1.Close()
+	clientB1Anonymous := connect(t)
+	defer clientB1Anonymous.Close()
+
+	clientB2 := login(userB, deviceB2)
+	defer clientB2.Close()
+	clientB2Anonymous := connect(t)
+	defer clientB2Anonymous.Close()
 
 	t.Run("register 4 devices for 2 users", func(t *testing.T) {
 		roundTrip(t, clientA1, register(1, "spkA1", 11, 12, 13))
@@ -92,9 +115,9 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T, userID
 	})
 
 	t.Run("request a preKey, pretending that we already know about one of the user's devices", func(t *testing.T) {
-		clientB1.Send(requestPreKeys(userA, deviceA2))
-		preKey := clientB1.Receive().GetPreKey()
-		require.Zero(t, clientB1.Drain(), "should have received only one preKey")
+		clientB1Anonymous.Send(requestPreKeys(userA, deviceA2))
+		preKey := clientB1Anonymous.Receive().GetPreKey()
+		require.Zero(t, clientB1Anonymous.Drain(), "should have received only one preKey")
 
 		expectedPreKey := &model.PreKey{
 			UserID:         userA,
@@ -107,10 +130,10 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T, userID
 	})
 
 	t.Run("request preKeys for multiple devices", func(t *testing.T) {
-		clientA2.Send(requestPreKeys(userB))
-		preKey1 := clientA2.Receive().GetPreKey()
-		preKey2 := clientA2.Receive().GetPreKey()
-		require.Zero(t, clientA2.Drain(), "should have received only two preKeys")
+		clientA2Anonymous.Send(requestPreKeys(userB))
+		preKey1 := clientA2Anonymous.Receive().GetPreKey()
+		preKey2 := clientA2Anonymous.Receive().GetPreKey()
+		require.Zero(t, clientA2Anonymous.Drain(), "should have received only two preKeys")
 		preKeys := map[uint32]*model.PreKey{
 			preKey1.DeviceID: preKey1,
 			preKey2.DeviceID: preKey2,
@@ -152,14 +175,14 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T, userID
 
 	t.Run("exhaust pre-keys for deviceA2, then make sure we get a response without a preKey when requesting pre keys", func(t *testing.T) {
 		for i := 0; i < 3; i++ {
-			clientB1.Send(requestPreKeys(userA, deviceA1))
-			clientB1.Receive().GetPreKey()
+			clientB1Anonymous.Send(requestPreKeys(userA, deviceA1))
+			clientB1Anonymous.Receive().GetPreKey()
 		}
-		require.Zero(t, clientB1.Drain(), "shouldn't be getting any more messages on clientB1 after receiving pre keys")
+		require.Zero(t, clientB1Anonymous.Drain(), "shouldn't be getting any more messages on clientB1 after receiving pre keys")
 
-		clientB1.Send(requestPreKeys(userA, deviceA1))
-		preKey := clientB1.Receive().GetPreKey()
-		require.Zero(t, clientB1.Drain(), "should have received only one preKey")
+		clientB1Anonymous.Send(requestPreKeys(userA, deviceA1))
+		preKey := clientB1Anonymous.Receive().GetPreKey()
+		require.Zero(t, clientB1Anonymous.Drain(), "should have received only one preKey")
 		expectedPreKey := &model.PreKey{
 			UserID:         userA,
 			DeviceID:       deviceA2,
@@ -173,7 +196,7 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T, userID
 	})
 
 	t.Run("send and receive message", func(t *testing.T) {
-		roundTrip(t, clientA1, messageBuilder.Build(&model.Message_OutboundMessage{&model.OutboundMessage{
+		roundTrip(t, clientA1Anonymous, messageBuilder.Build(&model.Message_OutboundMessage{&model.OutboundMessage{
 			To: &model.Address{
 				UserID:   userB,
 				DeviceID: deviceB1,
@@ -189,8 +212,8 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T, userID
 		_, err := database.PreKeysRemaining(userA, deviceA1)
 		require.EqualValues(t, model.ErrUnknownDevice, err, "device should be unknown after removal")
 		roundTrip(t, clientA2, messageBuilder.Build(&model.Message_Unregister{&model.Unregister{}}))
-		clientB1.Send(requestPreKeys(userA))
-		err = clientB1.Receive().GetError()
+		clientB1Anonymous.Send(requestPreKeys(userA))
+		err = clientB1Anonymous.Receive().GetError()
 		require.EqualValues(t, model.ErrUnknownUser.Error(), err.Error())
 	})
 }

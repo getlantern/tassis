@@ -11,6 +11,16 @@ message Error {
     string description = 2;
 }
 
+message Address {
+    bytes  userID   = 1;
+    uint32 deviceID = 2;
+}
+
+message Login {
+    Address address   = 1;
+    bytes   signature = 2;
+}
+
 message Register {
     uint32         registrationID = 1;
 	bytes          signedPreKey   = 2;
@@ -36,11 +46,6 @@ message PreKeysLow {
     uint32 keysRequested = 1;
 }
 
-message Address {
-    bytes  userID   = 1;
-    uint32 deviceID = 2;
-}
-
 message OutboundMessage {
     Address to                        = 1;
     bytes   unidentifiedSenderMessage = 2;
@@ -50,14 +55,15 @@ message Message {
     uint32 sequence = 1;
 
     oneof payload {
-        Ack             ack             = 2;
-        Error           error           = 3;
-        Register        register        = 4;
-        Unregister      unregister      = 5;
-        RequestPreKeys  requestPreKeys  = 6;
-        PreKey          preKey          = 7;
-        PreKeysLow      preKeysLow      = 8;
-        OutboundMessage outboundMessage = 9;
-        bytes           inboundMessage = 10;
+        Ack             ack             =  2;
+        Error           error           =  3;
+        Login           login           =  4;
+        Register        register        =  5;
+        Unregister      unregister      =  6;
+        RequestPreKeys  requestPreKeys  =  7;
+        PreKey          preKey          =  8;
+        PreKeysLow      preKeysLow      =  9;
+        OutboundMessage outboundMessage = 10;
+        bytes           inboundMessage  = 11;
     }
 }
