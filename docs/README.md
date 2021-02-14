@@ -1,6 +1,62 @@
 # Protocol Documentation
 <a name="top"></a>
 
+## Message Exchange Flow
+![Message Exchange Flow](mainflow.png)
+
+<!-- The above sequence diagram is generated at https://sequencediagram.org using the below code:
+
+Message Exchange Flow
+
+==recipient connects and authenticates==
+participant Recipient
+participant RecipientServerConn
+participant Database
+participant Broker
+participant SenderServerConn
+participant Sender
+Recipient->RecipientServerConn:Connect WebSocket
+RecipientServerConn->Recipient:AuthChallenge
+Recipient->RecipientServerConn:AuthResponse
+RecipientServerConn->Recipient:Ack
+
+==sender connects anonymously==
+Sender->SenderServerConn:Connect WebSocket
+SenderServerConn->Sender:AuthChallenge
+Sender->Sender:ignore auth challenge
+
+==recipient registers key material==
+Recipient->RecipientServerConn:Registration
+RecipientServerConn->Database:Register()
+RecipientServerConn->Recipient:Ack
+
+==sender requests key material to init session==
+Sender->SenderServerConn:RequestPreKeys
+SenderServerConn->Database:RequestPreKeys()
+loop for each matching device
+SenderServerConn->Sender:PreKey
+SenderServerConn->Sender:PreKey
+end
+
+==message exchange==
+Sender->SenderServerConn:OutboundMessage
+SenderServerConn->Broker:Publish()
+SenderServerConn->Sender:Ack
+Broker->RecipientServerConn:sealed sender message
+RecipientServerConn->Recipient:InboundMessage
+Recipient->RecipientServerConn:Ack
+RecipientServerConn->Broker:Ack
+end
+
+==keep oneTimePreKeys filled==
+loop periodically check if preKeys low
+RecipientServerConn->Database:PreKeysRemaining()
+RecipientServerConn->Recipient:PreKeysLow
+RecipientServerConn->Database:Register()
+end
+
+-->
+
 ## Table of Contents
 
 - [model/Messages.proto](#model/Messages.proto)
@@ -33,7 +89,7 @@ Clients typically connect to the messaging-server via WebSockets to exchange mes
 Clients will typically open two separate connections, authenticating on one and leaving
 the other unauthenticated.
 
-The unauthenticated connection is used for retrieving other users&#39; preKeys and
+The unauthenticated connection is used for retrieving other users' preKeys and
 sending messages to them, so as not to reveal the identity of senders.
 
 The authenticated connection is used for all other operations, including performing key
@@ -48,16 +104,16 @@ Messages sent from clients to servers follow a request/response pattern. The ser
 respond to these with either an Ack or a typed response. In the event of an error, it will respond
 with an Error message. This includes the following messages:
 
- - Register        -&gt; Ack
- - Unregister      -&gt; Ack
- - RequestPreKeys  -&gt; PreKey (may send multiple if there are multiple matching devices)
- - OutboundMessage -&gt; Ack
+ - Register        -> Ack
+ - Unregister      -> Ack
+ - RequestPreKeys  -> PreKey (may send multiple if there are multiple matching devices)
+ - OutboundMessage -> Ack
 
 Some messages sent from the server to the client require an Ack in response:
 
- - inboundMessage  -&gt; Ack
+ - inboundMessage  -> Ack
 
-Some messages don&#39;t require any response:
+Some messages don't require any response:
 
  - PreKeysLow
 
@@ -84,7 +140,7 @@ An Address for a specific client
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| userID | [bytes](#bytes) |  | The 33 byte user ID, which is also the user&#39;s public key. It consists of a 1 byte type (always 0x05) followed by 32 bits of ed25519 public key |
+| userID | [bytes](#bytes) |  | The 33 byte user ID, which is also the user's public key. It consists of a 1 byte type (always 0x05) followed by 32 bits of ed25519 public key |
 | deviceID | [uint32](#uint32) |  | Identifier for a specific user device, only unique for a given userID |
 
 
@@ -117,7 +173,7 @@ The server will accept an AuthResponse only once per connection.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | login | [bytes](#bytes) |  | The serialized form of the Login message |
-| signature | [bytes](#bytes) |  | A signature of the serialized Login message calculated using the private key corresponding to the UserID that&#39;s logging in |
+| signature | [bytes](#bytes) |  | A signature of the serialized Login message calculated using the private key corresponding to the UserID that's logging in |
 
 
 
@@ -132,7 +188,7 @@ Indicates than an error occurred processing a request.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | An identifier for the error, like &#34;unknown_user&#34; |
+| name | [string](#string) |  | An identifier for the error, like "unknown_user" |
 | description | [string](#string) |  | Optional additional information about the error |
 
 
@@ -148,7 +204,7 @@ Login information supplied by clients in response to an AuthChallenge.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| address | [Address](#signal.Address) |  | The Address that&#39;s logging in. This will become permanently associated with the current connection |
+| address | [Address](#signal.Address) |  | The Address that's logging in. This will become permanently associated with the current connection |
 | nonce | [bytes](#bytes) |  | This echoes back the nonce provided by the server in the AuthChallenge |
 
 
@@ -213,7 +269,7 @@ Clients will receive one of these for each device matching the query from Reques
 | address | [Address](#signal.Address) |  | The Address that this key material belongs to |
 | registrationID | [uint32](#uint32) |  | The local registrationID for the device at this Address. |
 | signedPreKey | [bytes](#bytes) |  | The signedPreKey for the device at this Address. |
-| oneTimePreKey | [bytes](#bytes) |  | One disposable preKey for the device at this Address. May be empty if none were available (that&#39;s okay, Signal can still do an X3DH key agreement without it). |
+| oneTimePreKey | [bytes](#bytes) |  | One disposable preKey for the device at this Address. May be empty if none were available (that's okay, Signal can still do an X3DH key agreement without it). |
 
 
 
@@ -223,7 +279,7 @@ Clients will receive one of these for each device matching the query from Reques
 <a name="signal.PreKeysLow"></a>
 
 ### PreKeysLow
-A notification from the server to the client that we&#39;re running low on oneTimePreKeys for the Address associated to this connection.
+A notification from the server to the client that we're running low on oneTimePreKeys for the Address associated to this connection.
 
 Clients may choose to respond to this by sending a Register message with some more preKeys. This does not have to be tied to the initial PreKeysLow message.
 
@@ -245,7 +301,7 @@ Requires authentication
 A request to register a signed preKey and some set of one-time use preKeys. PreKeys are used by clients to perform X3DH key agreement in order to
 establish end-to-end encrypted sessions.
 
-This information is registered in the database under the client&#39;s Address. If multiple registrations are received, if the registrationID and signedPreKey
+This information is registered in the database under the client's Address. If multiple registrations are received, if the registrationID and signedPreKey
 match the information on file, the new preKeys will be appended to the ones already on file. Otherwise, the existing registration will be replaced by the
 latest.
 
@@ -272,7 +328,7 @@ A request to retrieve preKey information for all registered devices for the give
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | userID | [bytes](#bytes) |  | The UserID for which to retrieve preKeys. |
-| knownDeviceIDs | [uint32](#uint32) | repeated | Devices which the client already knows about and doesn&#39;t need preKeys for. |
+| knownDeviceIDs | [uint32](#uint32) | repeated | Devices which the client already knows about and doesn't need preKeys for. |
 
 
 
@@ -284,19 +340,19 @@ A request to retrieve preKey information for all registered devices for the give
 ### Unregister
 Requires authentication
 
-Removes the recorded registration for the client&#39;s Address.
+Removes the recorded registration for the client's Address.
 
 
 
 
 
- 
+ <!-- end messages -->
 
- 
+ <!-- end enums -->
 
- 
+ <!-- end HasExtensions -->
 
- 
+ <!-- end services -->
 
 
 
@@ -319,4 +375,3 @@ Removes the recorded registration for the client&#39;s Address.
 | <a name="bool" /> bool |  | bool | boolean | boolean | bool | bool | boolean | TrueClass/FalseClass |
 | <a name="string" /> string | A string must always contain UTF-8 encoded or 7-bit ASCII text. | string | String | str/unicode | string | string | string | String (UTF-8) |
 | <a name="bytes" /> bytes | May contain any arbitrary sequence of bytes. | string | ByteString | str | []byte | ByteString | string | String (ASCII-8BIT) |
-
