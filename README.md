@@ -1,8 +1,11 @@
-The most up-to-date documentation lives in the code. See [model/messages.go](model/messages.go) for message formats and [testsupport/testsupport.go](testsupport/testsupport.go) for a fairly full usage example
-that illustrates the message exchange pattern.
+See [testsupport/testsupport.go](testsupport/testsupport.go) for a fairly full usage example that illustrates the message exchange pattern.
+
+The message formats are documented in [apidoc.md](apidoc.md).
 
 ### Protocol Buffers
 This project uses protocol buffers. Follow the [tutorial](https://developers.google.com/protocol-buffers/docs/gotutorial) to ensure that you have the right tools in place, then run `make` to ensure the protocol buffers are up to date.
+
+Documentation is generated using [protoc-gen-doc](https://github.com/pseudomuto/protoc-gen-doc). You can install it with `go get -u github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc`
 
 # messaging-server
 

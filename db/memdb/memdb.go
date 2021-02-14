@@ -88,8 +88,10 @@ func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, 
 				registration.PreKeys = registration.PreKeys[:len(registration.PreKeys)-1]
 			}
 			result = append(result, &model.PreKey{
-				UserID:         request.UserID,
-				DeviceID:       deviceID,
+				Address: &model.Address{
+					UserID:   request.UserID,
+					DeviceID: deviceID,
+				},
 				RegistrationID: registration.RegistrationID,
 				SignedPreKey:   registration.SignedPreKey,
 				PreKey:         preKey,

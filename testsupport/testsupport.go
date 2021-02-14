@@ -164,8 +164,10 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 		require.Zero(t, clientB1Anonymous.Drain(), "should have received only one preKey")
 
 		expectedPreKey := &model.PreKey{
-			UserID:         userA,
-			DeviceID:       deviceA1,
+			Address: &model.Address{
+				UserID:   userA,
+				DeviceID: deviceA1,
+			},
 			RegistrationID: 1,
 			SignedPreKey:   []byte("spkA1"),
 			PreKey:         []byte{13},
@@ -179,21 +181,25 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 		preKey2 := clientA2Anonymous.Receive().GetPreKey()
 		require.Zero(t, clientA2Anonymous.Drain(), "should have received only two preKeys")
 		preKeys := map[uint32]*model.PreKey{
-			preKey1.DeviceID: preKey1,
-			preKey2.DeviceID: preKey2,
+			preKey1.Address.DeviceID: preKey1,
+			preKey2.Address.DeviceID: preKey2,
 		}
 
 		expectedPreKeys := map[uint32]*model.PreKey{
 			deviceB1: {
-				UserID:         userB,
-				DeviceID:       deviceB1,
+				Address: &model.Address{
+					UserID:   userB,
+					DeviceID: deviceB1,
+				},
 				RegistrationID: 3,
 				SignedPreKey:   []byte("spkB1"),
 				PreKey:         []byte{33},
 			},
 			deviceB2: {
-				UserID:         userB,
-				DeviceID:       deviceB2,
+				Address: &model.Address{
+					UserID:   userB,
+					DeviceID: deviceB2,
+				},
 				RegistrationID: 4,
 				SignedPreKey:   []byte("spkB2"),
 				PreKey:         []byte{43},
@@ -228,8 +234,10 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 		preKey := clientB1Anonymous.Receive().GetPreKey()
 		require.Zero(t, clientB1Anonymous.Drain(), "should have received only one preKey")
 		expectedPreKey := &model.PreKey{
-			UserID:         userA,
-			DeviceID:       deviceA2,
+			Address: &model.Address{
+				UserID:   userA,
+				DeviceID: deviceA2,
+			},
 			RegistrationID: 2,
 			SignedPreKey:   []byte("spkA2"),
 			PreKey:         nil, // should not have pre-key because we ran out
