@@ -1,13 +1,8 @@
 package model
 
 import (
-	"encoding/base32"
 	"fmt"
 	"sync/atomic"
-)
-
-var (
-	userIDEncoding = base32.NewEncoding("ybndrfg8ejkmcpqxot1uw2sza345h769").WithPadding(base32.NoPadding)
 )
 
 var (
@@ -65,14 +60,6 @@ func TypedError(err error) *Error {
 		return typed
 	}
 	return ErrUnknown.WithDescription(err.Error())
-}
-
-func UserIDToString(userID []byte) string {
-	return userIDEncoding.EncodeToString(userID)
-}
-
-func StringToUserID(userID string) ([]byte, error) {
-	return userIDEncoding.DecodeString(userID)
 }
 
 type MessageBuilder struct {

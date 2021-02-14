@@ -1,16 +1,17 @@
 package db
 
 import (
+	"github.com/getlantern/messaging-server/identity"
 	"github.com/getlantern/messaging-server/model"
 )
 
 // DB represents a database that can store user registration information
 type DB interface {
-	Register(userID []byte, deviceID uint32, registration *model.Register) error
+	Register(userID identity.UserID, deviceID uint32, registration *model.Register) error
 
-	Unregister(userID []byte, deviceID uint32) error
+	Unregister(userID identity.UserID, deviceID uint32) error
 
 	RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, error)
 
-	PreKeysRemaining(userID []byte, deviceID uint32) (int, error)
+	PreKeysRemaining(userID identity.UserID, deviceID uint32) (int, error)
 }

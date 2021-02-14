@@ -2,7 +2,6 @@ package service
 
 import (
 	"bytes"
-	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
 	"sync"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/getlantern/messaging-server/broker"
 	"github.com/getlantern/messaging-server/db"
+	"github.com/getlantern/messaging-server/identity"
 	"github.com/getlantern/messaging-server/model"
 )
 
@@ -296,8 +296,8 @@ func (conn *ClientConnection) handleAuthResponse(msg *model.Message) {
 
 	// verify signature
 	address := login.Address
-	publicKey := ed25519.PublicKey(address.UserID)
-	if !ed25519.Verify(publicKey, authResponse.Login, authResponse.Signature) {
+	publicKey := identity.UserID(address.UserID).PublicKey()
+	if !publicKey.Verify(authResponse.Login, authResponse.Signature) {
 		conn.error(msg, model.ErrUnauthorized)
 		conn.Close()
 		return
@@ -410,8 +410,8 @@ func (srvc *Service) publisherFor(address *model.Address) (broker.Publisher, err
 	return publisher, nil
 }
 
-func topicFor(userID []byte, deviceID uint32) string {
-	return fmt.Sprintf("%v|%d", model.UserIDToString(userID), deviceID)
+func topicFor(userID identity.UserID, deviceID uint32) string {
+	return fmt.Sprintf("%v|%d", userID.String(), deviceID)
 }
 
 func (conn *ClientConnection) ack(msg *model.Message) {

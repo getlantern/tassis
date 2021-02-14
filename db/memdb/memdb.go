@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/getlantern/messaging-server/db"
+	"github.com/getlantern/messaging-server/identity"
 	"github.com/getlantern/messaging-server/model"
 )
 
@@ -20,8 +21,8 @@ type memdb struct {
 	mx    sync.Mutex
 }
 
-func (d *memdb) Register(userID []byte, deviceID uint32, registration *model.Register) error {
-	userIDString := model.UserIDToString(userID)
+func (d *memdb) Register(userID identity.UserID, deviceID uint32, registration *model.Register) error {
+	userIDString := userID.String()
 
 	d.mx.Lock()
 	defer d.mx.Unlock()
@@ -41,8 +42,8 @@ func (d *memdb) Register(userID []byte, deviceID uint32, registration *model.Reg
 	return nil
 }
 
-func (d *memdb) Unregister(userID []byte, deviceID uint32) error {
-	userIDString := model.UserIDToString(userID)
+func (d *memdb) Unregister(userID identity.UserID, deviceID uint32) error {
+	userIDString := userID.String()
 
 	d.mx.Lock()
 	defer d.mx.Unlock()
@@ -59,7 +60,7 @@ func (d *memdb) Unregister(userID []byte, deviceID uint32) error {
 }
 
 func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, error) {
-	userIDString := model.UserIDToString(request.UserID)
+	userIDString := identity.UserID(request.UserID).String()
 
 	d.mx.Lock()
 	defer d.mx.Unlock()
@@ -99,8 +100,8 @@ func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, 
 	return result, nil
 }
 
-func (d *memdb) PreKeysRemaining(userID []byte, deviceID uint32) (int, error) {
-	userIDString := model.UserIDToString(userID)
+func (d *memdb) PreKeysRemaining(userID identity.UserID, deviceID uint32) (int, error) {
+	userIDString := userID.String()
 
 	d.mx.Lock()
 	defer d.mx.Unlock()

@@ -1,12 +1,10 @@
 package testsupport
 
 import (
-	"crypto"
-	"crypto/ed25519"
-	"crypto/rand"
 	"time"
 
 	"github.com/getlantern/messaging-server/db"
+	"github.com/getlantern/messaging-server/identity"
 	"github.com/getlantern/messaging-server/model"
 	"google.golang.org/protobuf/proto"
 
@@ -42,7 +40,7 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 		require.Equal(t, msg.Sequence, ack.Sequence)
 	}
 
-	doLogin := func(t *testing.T, userID []byte, deviceID uint32, privateKey ed25519.PrivateKey) (ClientConnectionLike, *model.Message) {
+	doLogin := func(t *testing.T, userID identity.UserID, deviceID uint32, privateKey identity.PrivateKey) (ClientConnectionLike, *model.Message) {
 		client := connect(t)
 		authChallenge := client.Receive().GetAuthChallenge()
 		require.Len(t, authChallenge.Nonce, 32)
@@ -57,7 +55,7 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 
 		loginBytes, err := proto.Marshal(login)
 		require.NoError(t, err)
-		signature, err := privateKey.Sign(rand.Reader, loginBytes, crypto.Hash(0))
+		signature, err := privateKey.Sign(loginBytes)
 		require.NoError(t, err)
 		msg := messageBuilder.Build(
 			&model.Message_AuthResponse{
@@ -71,7 +69,7 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 	}
 
 	// login logs a client in
-	login := func(userID []byte, deviceID uint32, privateKey ed25519.PrivateKey) ClientConnectionLike {
+	login := func(userID identity.UserID, deviceID uint32, privateKey identity.PrivateKey) ClientConnectionLike {
 		client, msg := doLogin(t, userID, deviceID, privateKey)
 		ack := client.Receive()
 		require.Equal(t, msg.Sequence, ack.Sequence)
@@ -107,47 +105,49 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 		return messageBuilder.Build(&model.Message_RequestPreKeys{req})
 	}
 
-	userAPublicKey, userAPrivateKey, err := ed25519.GenerateKey(rand.Reader)
+	userAKeyPair, err := identity.GenerateKeyPair()
 	require.NoError(t, err)
-	userA := []byte(userAPublicKey)
+	userA := userAKeyPair.Public.UserID()
 	deviceA1 := uint32(11)
 	deviceA2 := uint32(12)
 
-	userBPublicKey, userBPrivateKey, err := ed25519.GenerateKey(rand.Reader)
+	userBKeyPair, err := identity.GenerateKeyPair()
 	require.NoError(t, err)
-	userB := []byte(userBPublicKey)
+	userB := userBKeyPair.Public.UserID()
 	deviceB1 := uint32(21)
 	deviceB2 := uint32(22)
 
-	clientA1 := login(userA, deviceA1, userAPrivateKey)
+	clientA1 := login(userA, deviceA1, userAKeyPair.Private)
 	defer clientA1.Close()
 	clientA1Anonymous := connectAnonymous()
 	defer clientA1Anonymous.Close()
 
-	clientA2 := login(userA, deviceA2, userAPrivateKey)
+	clientA2 := login(userA, deviceA2, userAKeyPair.Private)
 	defer clientA2.Close()
 	clientA2Anonymous := connectAnonymous()
 	defer clientA2Anonymous.Close()
 
-	clientB1 := login(userB, deviceB1, userBPrivateKey)
+	clientB1 := login(userB, deviceB1, userBKeyPair.Private)
 	defer clientB1.Close()
 	clientB1Anonymous := connectAnonymous()
 	defer clientB1Anonymous.Close()
 
-	clientB2 := login(userB, deviceB2, userBPrivateKey)
+	clientB2 := login(userB, deviceB2, userBKeyPair.Private)
 	defer clientB2.Close()
 	clientB2Anonymous := connectAnonymous()
 	defer clientB2Anonymous.Close()
 
 	t.Run("login failure", func(t *testing.T) {
-		publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+		keyPair, err := identity.GenerateKeyPair()
 		require.NoError(t, err)
-		_, wrongPrivateKey, err := ed25519.GenerateKey(rand.Reader)
+		wrongKeyPair, err := identity.GenerateKeyPair()
 		require.NoError(t, err)
-		user := []byte(publicKey)
+		user := keyPair.Public.UserID()
 		device := uint32(1)
-		client, _ := doLogin(t, user, device, wrongPrivateKey)
-		err = client.Receive().GetError()
+		client, _ := doLogin(t, user, device, wrongKeyPair.Private)
+		defer client.Close()
+		msg := client.Receive()
+		err = msg.GetError()
 		require.EqualValues(t, model.ErrUnauthorized.Error(), err.Error())
 	})
 

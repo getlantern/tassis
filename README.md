@@ -17,7 +17,7 @@ Encryption is handled by clients using [Signal](https://github.com/signalapp/lib
 Clients identify each other by a combination of userID and deviceID.
 
 ### UserID (also Identity Key)
-A 33 bit unique identifier for a user to which messages can be delivered, and also that user's public key.
+A 33 bit unique identifier for a user to which messages can be delivered, and also that user's public key. The first byte is a key type indicator which is always 0x05 for DJB_TYPE. This is provided for compatibility with Signal's serialized representation of its identity keys.
 
 ### DeviceID
 A 32 bit unsigned integer that uniquely identifies one of a user's devices (not unique across users).
