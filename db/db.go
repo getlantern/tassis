@@ -14,4 +14,6 @@ type DB interface {
 	RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, error)
 
 	PreKeysRemaining(userID identity.UserID, deviceID uint32) (int, error)
+
+	Close() error
 }

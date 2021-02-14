@@ -88,7 +88,7 @@ message AuthResponse {
 message Register {
     uint32         registrationID = 1;  // The local registrationID for this device.
 	bytes          signedPreKey   = 2;  // The signedPreKey for this device.
-    repeated bytes preKeys        = 3;  // Zero, one or more disposable preKeys for this device.
+    repeated bytes oneTimePreKeys = 3;  // Zero, one or more disposable preKeys for this device.
 }
 
 // Requires authentication
@@ -100,10 +100,8 @@ message Unregister {}
 //
 // A request to retrieve preKey information for all registered devices for the given UserID except those listed in knownDeviceIDs.
 message RequestPreKeys {
-    // The UserID for which to retrieve preKeys.
-    bytes           userID         = 1;
-    // Devices which the client already knows about and doesn't need preKeys for.
-    repeated uint32 knownDeviceIDs = 2;
+    bytes           userID         = 1;  // The UserID for which to retrieve preKeys.
+    repeated uint32 knownDeviceIDs = 2;  // Devices which the client already knows about and doesn't need preKeys for.
 }
 
 // Information about a PreKey for a specific Address.
@@ -113,14 +111,14 @@ message PreKey {
     Address address        = 1;  // The Address that this key material belongs to
     uint32  registrationID = 2;  // The local registrationID for the device at this Address.
     bytes   signedPreKey   = 3;  // The signedPreKey for the device at this Address.
-	bytes   preKey         = 4;  // One disposable preKey for the device at this Address. May be empty if none were available (that's okay, Signal can still do an X3DH key agreement without it).
+	bytes   oneTimePreKey  = 4;  // One disposable preKey for the device at this Address. May be empty if none were available (that's okay, Signal can still do an X3DH key agreement without it).
 }
 
-// A notification from the server to the client that we're running low on disposable preKeys for the Address associated to this connection.
+// A notification from the server to the client that we're running low on oneTimePreKeys for the Address associated to this connection.
 //
 // Clients may choose to respond to this by sending a Register message with some more preKeys. This does not have to be tied to the initial PreKeysLow message.
 message PreKeysLow {
-    uint32 keysRequested = 1;  // The number of additional preKeys that the server is requesting.
+    uint32 keysRequested = 1;  // The number of additional oneTimePreKeys that the server is requesting.
 }
 
 // Requires anonymous connection

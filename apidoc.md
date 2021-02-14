@@ -213,7 +213,7 @@ Clients will receive one of these for each device matching the query from Reques
 | address | [Address](#signal.Address) |  | The Address that this key material belongs to |
 | registrationID | [uint32](#uint32) |  | The local registrationID for the device at this Address. |
 | signedPreKey | [bytes](#bytes) |  | The signedPreKey for the device at this Address. |
-| preKey | [bytes](#bytes) |  | One disposable preKey for the device at this Address. May be empty if none were available (that&#39;s okay, Signal can still do an X3DH key agreement without it). |
+| oneTimePreKey | [bytes](#bytes) |  | One disposable preKey for the device at this Address. May be empty if none were available (that&#39;s okay, Signal can still do an X3DH key agreement without it). |
 
 
 
@@ -223,14 +223,14 @@ Clients will receive one of these for each device matching the query from Reques
 <a name="signal.PreKeysLow"></a>
 
 ### PreKeysLow
-A notification from the server to the client that we&#39;re running low on disposable preKeys for the Address associated to this connection.
+A notification from the server to the client that we&#39;re running low on oneTimePreKeys for the Address associated to this connection.
 
 Clients may choose to respond to this by sending a Register message with some more preKeys. This does not have to be tied to the initial PreKeysLow message.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| keysRequested | [uint32](#uint32) |  | The number of additional preKeys that the server is requesting. |
+| keysRequested | [uint32](#uint32) |  | The number of additional oneTimePreKeys that the server is requesting. |
 
 
 
@@ -254,7 +254,7 @@ latest.
 | ----- | ---- | ----- | ----------- |
 | registrationID | [uint32](#uint32) |  | The local registrationID for this device. |
 | signedPreKey | [bytes](#bytes) |  | The signedPreKey for this device. |
-| preKeys | [bytes](#bytes) | repeated | Zero, one or more disposable preKeys for this device. |
+| oneTimePreKeys | [bytes](#bytes) | repeated | Zero, one or more disposable preKeys for this device. |
 
 
 

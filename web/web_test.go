@@ -9,7 +9,9 @@ import (
 	"github.com/gorilla/websocket"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/getlantern/messaging-server/broker"
 	"github.com/getlantern/messaging-server/broker/membroker"
+	"github.com/getlantern/messaging-server/db"
 	"github.com/getlantern/messaging-server/db/memdb"
 	"github.com/getlantern/messaging-server/model"
 	"github.com/getlantern/messaging-server/service"
@@ -20,11 +22,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWebSocketClient(t *testing.T) {
-	database := memdb.New()
+func TestWebSocketClientInMemory(t *testing.T) {
+	b := membroker.New()
+	d := memdb.New()
+	testWebSocketClient(t, d, b)
+}
+
+func testWebSocketClient(t *testing.T, d db.DB, b broker.Broker) {
 	srvc, err := service.New(&service.Opts{
-		DB:                   database,
-		Broker:               membroker.New(),
+		DB:                   d,
+		Broker:               b,
 		CheckPreKeysInterval: testsupport.CheckPreKeysInterval,
 		LowPreKeysLimit:      testsupport.LowPreKeysLimit,
 		NumPreKeysToRequest:  testsupport.NumPreKeysToRequest,
@@ -41,7 +48,7 @@ func TestWebSocketClient(t *testing.T) {
 	defer l.Close()
 	go server.Serve(l)
 
-	testsupport.TestService(t, database, func(t *testing.T) testsupport.ClientConnectionLike {
+	testsupport.TestService(t, d, func(t *testing.T) testsupport.ClientConnectionLike {
 		url := fmt.Sprintf("ws://%s/api", l.Addr().String())
 		t.Logf("connecting to %v", url)
 		conn, _, err := websocket.DefaultDialer.Dial(url, nil)

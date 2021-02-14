@@ -89,7 +89,7 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 			SignedPreKey:   []byte(signedPreKey),
 		}
 		for _, preKey := range preKeys {
-			reg.PreKeys = append(reg.PreKeys, []byte{preKey})
+			reg.OneTimePreKeys = append(reg.OneTimePreKeys, []byte{preKey})
 		}
 
 		return messageBuilder.Build(&model.Message_Register{reg})
@@ -170,7 +170,7 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 			},
 			RegistrationID: 1,
 			SignedPreKey:   []byte("spkA1"),
-			PreKey:         []byte{13},
+			OneTimePreKey:  []byte{13},
 		}
 		require.EqualValues(t, expectedPreKey, preKey, "should have gotten most recent preKey")
 	})
@@ -193,7 +193,7 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 				},
 				RegistrationID: 3,
 				SignedPreKey:   []byte("spkB1"),
-				PreKey:         []byte{33},
+				OneTimePreKey:  []byte{33},
 			},
 			deviceB2: {
 				Address: &model.Address{
@@ -202,7 +202,7 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 				},
 				RegistrationID: 4,
 				SignedPreKey:   []byte("spkB2"),
-				PreKey:         []byte{43},
+				OneTimePreKey:  []byte{43},
 			},
 		}
 		require.EqualValues(t, expectedPreKeys, preKeys, "should have gotten correct pre keys for both devices")
@@ -240,7 +240,7 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 			},
 			RegistrationID: 2,
 			SignedPreKey:   []byte("spkA2"),
-			PreKey:         nil, // should not have pre-key because we ran out
+			OneTimePreKey:  nil, // should not have pre-key because we ran out
 		}
 		require.EqualValues(t, expectedPreKey, preKey, "should have gotten correct pre key")
 		time.Sleep(slightlyMoreThanCheckPreKeysInterval)

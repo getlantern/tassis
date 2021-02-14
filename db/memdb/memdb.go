@@ -35,7 +35,7 @@ func (d *memdb) Register(userID identity.UserID, deviceID uint32, registration *
 	existing := user[deviceID]
 	if existing != nil && existing.RegistrationID == registration.RegistrationID && bytes.Equal(existing.SignedPreKey, registration.SignedPreKey) {
 		// Add pre-keys
-		existing.PreKeys = append(existing.PreKeys, registration.PreKeys...)
+		existing.OneTimePreKeys = append(existing.OneTimePreKeys, registration.OneTimePreKeys...)
 	} else {
 		user[deviceID] = registration
 	}
@@ -82,10 +82,10 @@ func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, 
 	result := make([]*model.PreKey, 0)
 	for deviceID, registration := range user {
 		if !isKnownDeviceID(deviceID) {
-			var preKey []byte
-			if len(registration.PreKeys) > 0 {
-				preKey = registration.PreKeys[len(registration.PreKeys)-1]
-				registration.PreKeys = registration.PreKeys[:len(registration.PreKeys)-1]
+			var oneTimePreKey []byte
+			if len(registration.OneTimePreKeys) > 0 {
+				oneTimePreKey = registration.OneTimePreKeys[len(registration.OneTimePreKeys)-1]
+				registration.OneTimePreKeys = registration.OneTimePreKeys[:len(registration.OneTimePreKeys)-1]
 			}
 			result = append(result, &model.PreKey{
 				Address: &model.Address{
@@ -94,7 +94,7 @@ func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, 
 				},
 				RegistrationID: registration.RegistrationID,
 				SignedPreKey:   registration.SignedPreKey,
-				PreKey:         preKey,
+				OneTimePreKey:  oneTimePreKey,
 			})
 		}
 	}
@@ -118,5 +118,9 @@ func (d *memdb) PreKeysRemaining(userID identity.UserID, deviceID uint32) (int, 
 		return 0, model.ErrUnknownDevice
 	}
 
-	return len(device.PreKeys), nil
+	return len(device.OneTimePreKeys), nil
+}
+
+func (d *memdb) Close() error {
+	return nil
 }
