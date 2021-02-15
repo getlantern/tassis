@@ -411,7 +411,7 @@ func (srvc *Service) publisherFor(address *model.Address) (broker.Publisher, err
 }
 
 func topicFor(userID identity.UserID, deviceID uint32) string {
-	return fmt.Sprintf("%v|%d", userID.String(), deviceID)
+	return fmt.Sprintf("%v:%d", userID.String(), deviceID)
 }
 
 func (conn *ClientConnection) ack(msg *model.Message) {

@@ -33,11 +33,19 @@ type ClientConnectionLike interface {
 
 func TestService(t *testing.T, database db.DB, connect func(t *testing.T) ClientConnectionLike) {
 	// roundTrip sends a message to the server and verifies that a corresponding ACK
-	// is received.
+	// is received, ignoring any non-ack messages that arrive first
 	roundTrip := func(t *testing.T, client ClientConnectionLike, msg *model.Message) {
 		client.Send(msg)
-		ack := client.Receive()
-		require.Equal(t, msg.Sequence, ack.Sequence)
+		for {
+			ack := client.Receive()
+			switch ack.GetPayload().(type) {
+			case *model.Message_Ack:
+				require.Equal(t, msg.Sequence, ack.Sequence)
+				return
+			default:
+				continue
+			}
+		}
 	}
 
 	doLogin := func(t *testing.T, userID identity.UserID, deviceID uint32, privateKey identity.PrivateKey) (ClientConnectionLike, *model.Message) {

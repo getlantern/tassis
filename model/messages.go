@@ -36,7 +36,7 @@ var (
 )
 
 func (err *Error) Error() string {
-	return fmt.Sprintf("%s|%s", err.Name, err.Description)
+	return fmt.Sprintf("%s:%s", err.Name, err.Description)
 }
 
 func (err *Error) WithDescription(description string) *Error {
