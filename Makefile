@@ -16,4 +16,4 @@ test-and-cover:
 	done
 
 upload-coverage:
-	goveralls -coverprofile=profile.cov -service=github -repotoken $$COVERALLS_TOKEN -ignore model/Messages.pb.go
+	goveralls -coverprofile=profile.cov -repotoken $$COVERALLS_TOKEN -ignore model/Messages.pb.go
