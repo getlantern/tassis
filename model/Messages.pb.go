@@ -557,7 +557,7 @@ type PreKey struct {
 
 	Address        *Address `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`                // The Address that this key material belongs to
 	RegistrationID uint32   `protobuf:"varint,2,opt,name=registrationID,proto3" json:"registrationID,omitempty"` // The local registrationID for the device at this Address.
-	SignedPreKey   []byte   `protobuf:"bytes,3,opt,name=signedPreKey,proto3" json:"signedPreKey,omitempty"`      // The signedPreKey for the device at this Address.
+	SignedPreKey   []byte   `protobuf:"bytes,3,opt,name=signedPreKey,proto3" json:"signedPreKey,omitempty"`      // The most recent signedPreKey for the device at this Address. See https://crypto.stackexchange.com/questions/72148/signal-protocol-how-is-signed-preKey-created
 	OneTimePreKey  []byte   `protobuf:"bytes,4,opt,name=oneTimePreKey,proto3" json:"oneTimePreKey,omitempty"`    // One disposable preKey for the device at this Address. May be empty if none were available (that's okay, Signal can still do an X3DH key agreement without it).
 }
 

@@ -50,10 +50,6 @@ func (err *Error) WithError(other error) *Error {
 	return err.WithDescription(other.Error())
 }
 
-func (err *Error) Equals(other *Error) bool {
-	return err.Name == other.Name && err.Description == other.Description
-}
-
 func TypedError(err error) *Error {
 	typed, ok := err.(*Error)
 	if ok {

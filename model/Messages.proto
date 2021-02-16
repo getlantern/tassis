@@ -110,7 +110,7 @@ message RequestPreKeys {
 message PreKey {
     Address address        = 1;  // The Address that this key material belongs to
     uint32  registrationID = 2;  // The local registrationID for the device at this Address.
-    bytes   signedPreKey   = 3;  // The signedPreKey for the device at this Address.
+    bytes   signedPreKey   = 3;  // The most recent signedPreKey for the device at this Address. See https://crypto.stackexchange.com/questions/72148/signal-protocol-how-is-signed-preKey-created
 	bytes   oneTimePreKey  = 4;  // One disposable preKey for the device at this Address. May be empty if none were available (that's okay, Signal can still do an X3DH key agreement without it).
 }
 

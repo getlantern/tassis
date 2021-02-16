@@ -20,6 +20,7 @@ func CapStreams(client *redis.Client, maxLen int, checkInterval time.Duration, b
 }
 
 func doCapStreams(client *redis.Client, maxLen int64, batchSize int) error {
+	// TODO: also delete stuff older than the latest acknowledgement for a given topic
 	streams, err := client.Keys(context.Background(), "topic:*").Result()
 	if err != nil {
 		return err

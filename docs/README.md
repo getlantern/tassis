@@ -1,5 +1,94 @@
-# Protocol Documentation
+# messaging-server Documentation
 <a name="top"></a>
+
+## Table of Contents
+- [Overview](#overview)
+  - [Key Distribution](#key-distribution)
+  - [Message Transport](#message-transport)
+- [WebSockets API](#websockets-api)
+- [Security](#security)
+- [Message Exchange Flow](#message-exchange-flow)
+- [Messages](#messages)
+
+## Overview
+messaging-server provides back-end facilities for exchanging end-to-end encryptoed (E2EE) messages between messaging clients. It provides two key facilities:
+
+- Key Distribution
+- Message transport
+
+These facilities are access via a [websockets API](#websockets-api)
+
+### Key Distribution
+Encryption is handled by clients using the [Signal protocol](https://github.com/signalapp/libsignal-protocol-java).
+
+messaging-server implements the "server" role as defined in Signal's [Sesame paper](https://www.signal.org/docs/specifications/sesame/).
+
+With Signal, messages are actually exchanged between devices, with each device pair having its own crypto session. So for example, if user A wants to send a message to user B
+that can be read on all their devices, user A needs to establish independent sessions with all of user B's devices, independently encrypt the message and send the separate ciphertext to each device.
+
+Each user's device is identified by an [Address](#signal.Address).
+
+Signal clients use the [X3DH key agreement protocol](https://www.signal.org/docs/specifications/x3dh/) to establish encrypted session, which requires server-facilitiated exchange of key information.
+
+messaging-server is ignorant of Signal's encryption algorithms and simply stores the information for use by Signal's client-side encryption logic as opaque data.
+
+There are two ways that a session can be established:
+
+1. When a device wants to send an encrypted message to a user, it initiates one local session per recipient device. In order to do this, it needs to know the key information for the other devices, which it obtains by sending messaging-server a [RequestPreKeys](#signal.RequestPreKeys) message and getting back one [PreKey](#signal.PreKey) per known device. With this, it sends a session initiation message that contains all the key material that the recipient needs in order to establish a session on its end.
+
+2. When a device receives an encrypted session initiation message from another device, it sets up the encrypted session on its end without needing to retrieve any key material from messaging-server.
+
+### Message Transport
+messaging-server facilities the exchange of messages between clients by supporting store-and-forward send and receive of opaque messages between clients. After connecting to messaging-server, clients can send messages to arbitrary addresses. Connected clients identify their own address upon connecting, at which point they can receive any messages that were sent to them.
+
+#### Message Acknowledgement and Delivery Guarantees
+Once clients have durably received a message, they acknowledge this to messaging-server, which in turn acknowledges receipt of the message to its broker so that the message won't be delivered in the future.
+
+If acknowledgements are lost, messages may be delivered multiple times, so clients need to take care to deduplicate messages on their own end.
+
+#### Message Retention
+The messaging server enforces limits on how many messages are retained for each device. If devices do not retrieve messages prior to those limits being hit, messages may be lost in transit.
+
+## Websockets API
+The public API uses websockets. Clients open two connections to ws[s]://server/<userID>/<deviceID>, one authenticated connection and one unauthenticated connection. To preserve sender anonymity, they retrieve key material and send messages on the unauthenticated connection. All other operations happen on the authenticated connection.
+
+All messages in the context of a client connection have a unique sequence number that identifies the message (separate sequences for both directions).
+
+For all messages, if an error is encountered while processing the message, the server will respond with an [Error](#signal.Error) whose sequence number is set to the sequence number of the message that led to the error.
+
+For messages that require a response (like [RequestPreKeys](#signal.RequestPreKeys)), if there was no error, the remote end will respond the corresponding response messages (like [PreKey](#signal.PreKey)).
+
+For all other messages, the remote end (both client and server) should respond with an [Ack](#signal.Ack) whose sequence number is set to the sequence number of the message that is being acknowledged.
+
+## External Dependencies
+messaging-server needs a [database](../db/db.go) for storing key distribution information and a pub/sub [message broker](../broker/broker.go) for exchanging messages between users.
+
+Simple in-memory implementations of both are provided for testing. In production, we'll start with Redis based implementations. If performance of the message transport becomes an issue, we can consider something like  [Apache Pulsar](https://streamnative.io/cloud/hosted).
+
+## Security
+
+### Authentication
+messaging-server supports both authenticated and unauthenticated connections. At the beginning of every connection, the server sends an [AuthChallenge](#signal.AuthChallenge) to the client with a nonce. Clients that wish to remain anonymous can simply ignore the challenge. Clients that wish to authenticate respond with an [AuthResponse](#signal.AuthResponse) containing their Address (UserID and DeviceID), the nonce from the challenge, and a signature over the Address+Nonce. The server then verifies that the nonce matches the expected value for this connection and that the signature is correct based on the sender's public key (which is also their userID). If yes, the user is authenticated. If not, the server returns an error and closes the connection.
+
+### Key Distribution
+In principle, messaging-server only provides a convenience for key-distribution, and it's encumbent on clients and end-users to verify key material for themselves. The UserID is in fact also the public key corresponding to that UserID (no key rotation allowed for a given UserID), so in practice if users are confident that they're sending a message to the correct UserID, they can be confident that it's being encrypted for reading by the owner of that UserID.
+
+### Transport Security
+
+#### Message Privacy and Integrity
+Because clients use E2EE, messaging-server does not concern itself with protecting the contents of messages from eavesdropping or tampering
+
+#### Sender Anonymity (Sealed Sender)
+Sealed Sender is a scheme used by Signal for allowing senders to send messages without intermediaries know who sent the message. The original scheme involved the Signal server issuing a certificate attesting to the sender's identity and the sender encrypting that certificate and sending it to the recipient. Because messaging-server doesn't use phone numbers, it doesn't need to attest to the sender's identity. So here, the sender simply signs its own address information and encrypts that for transmission to the client. Because the address is encrypted just like with Signal, and clients send messages via unauthenticaated connections, messaging-server doesn't know the address of the sender, only the recipient. Our Java implementation of this can be found [here](https://github.com/getlantern/libsignal-metadata-java).
+
+#### Denial of Service
+Because clients rely on messaging-server for the actual transport of messages, it is important to guard against various denial of services attacks. In addition to the typical denial of service attacks faced by any web service, messaging-server guards against the following categories of attack:
+
+##### Message Flooding
+Rate limiting should be used to prevent individual clients from flooding the network, or any particular user, with messages. *this is not yet implemented*
+
+##### Message Stealing
+In order to prevent unauthorized users from stealing messages before they can be received by their legitimate clients, messaging-server authenticates clients based on UserID to make sure that only authorized clients may read messages on behalf of a specific user.
 
 ## Message Exchange Flow
 ![Message Exchange Flow](mainflow.png)
@@ -10,11 +99,14 @@ Message Exchange Flow
 
 ==recipient connects and authenticates==
 participant Recipient
+participantgroup #lightblue **messaging-server**
 participant RecipientServerConn
 participant Database
 participant Broker
 participant SenderServerConn
+end
 participant Sender
+
 Recipient->RecipientServerConn:Connect WebSocket
 RecipientServerConn->Recipient:AuthChallenge
 Recipient->RecipientServerConn:AuthResponse
@@ -57,7 +149,7 @@ end
 
 -->
 
-## Table of Contents
+## Messages
 
 - [model/Messages.proto](#model/Messages.proto)
     - [Ack](#signal.Ack)
@@ -81,7 +173,7 @@ end
 <a name="model/Messages.proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## model/Messages.proto
+### model/Messages.proto
 messaging-server uses an asynchronous messaging pattern for interacting with the API.
 
 Clients typically connect to the messaging-server via WebSockets to exchange messages.
@@ -124,7 +216,7 @@ message that triggered the response so that the client or server can correlate r
 
 <a name="signal.Ack"></a>
 
-### Ack
+#### Ack
 Acknowledges successful receipt of a Message
 
 
@@ -134,7 +226,7 @@ Acknowledges successful receipt of a Message
 
 <a name="signal.Address"></a>
 
-### Address
+#### Address
 An Address for a specific client
 
 
@@ -150,7 +242,7 @@ An Address for a specific client
 
 <a name="signal.AuthChallenge"></a>
 
-### AuthChallenge
+#### AuthChallenge
 A challenge to the client to authenticate. This is sent by the server once and only once, immediately after clients connect.
 
 
@@ -165,7 +257,7 @@ A challenge to the client to authenticate. This is sent by the server once and o
 
 <a name="signal.AuthResponse"></a>
 
-### AuthResponse
+#### AuthResponse
 A response to an AuthChallenge that is sent from the client to the server on any connection that the client wishes to authenticate.
 The server will accept an AuthResponse only once per connection.
 
@@ -182,7 +274,7 @@ The server will accept an AuthResponse only once per connection.
 
 <a name="signal.Error"></a>
 
-### Error
+#### Error
 Indicates than an error occurred processing a request.
 
 
@@ -198,7 +290,7 @@ Indicates than an error occurred processing a request.
 
 <a name="signal.Login"></a>
 
-### Login
+#### Login
 Login information supplied by clients in response to an AuthChallenge.
 
 
@@ -214,7 +306,7 @@ Login information supplied by clients in response to an AuthChallenge.
 
 <a name="signal.Message"></a>
 
-### Message
+#### Message
 The envelope for all messages sent to/from clients.
 
 
@@ -240,7 +332,7 @@ The envelope for all messages sent to/from clients.
 
 <a name="signal.OutboundMessage"></a>
 
-### OutboundMessage
+#### OutboundMessage
 Requires anonymous connection
 
 A message from one client to another.
@@ -258,7 +350,7 @@ A message from one client to another.
 
 <a name="signal.PreKey"></a>
 
-### PreKey
+#### PreKey
 Information about a PreKey for a specific Address.
 
 Clients will receive one of these for each device matching the query from RequestPreKeys.
@@ -268,7 +360,7 @@ Clients will receive one of these for each device matching the query from Reques
 | ----- | ---- | ----- | ----------- |
 | address | [Address](#signal.Address) |  | The Address that this key material belongs to |
 | registrationID | [uint32](#uint32) |  | The local registrationID for the device at this Address. |
-| signedPreKey | [bytes](#bytes) |  | The signedPreKey for the device at this Address. |
+| signedPreKey | [bytes](#bytes) |  | The most recent signedPreKey for the device at this Address. See https://crypto.stackexchange.com/questions/72148/signal-protocol-how-is-signed-preKey-created |
 | oneTimePreKey | [bytes](#bytes) |  | One disposable preKey for the device at this Address. May be empty if none were available (that's okay, Signal can still do an X3DH key agreement without it). |
 
 
@@ -278,7 +370,7 @@ Clients will receive one of these for each device matching the query from Reques
 
 <a name="signal.PreKeysLow"></a>
 
-### PreKeysLow
+#### PreKeysLow
 A notification from the server to the client that we're running low on oneTimePreKeys for the Address associated to this connection.
 
 Clients may choose to respond to this by sending a Register message with some more preKeys. This does not have to be tied to the initial PreKeysLow message.
@@ -295,7 +387,7 @@ Clients may choose to respond to this by sending a Register message with some mo
 
 <a name="signal.Register"></a>
 
-### Register
+#### Register
 Requires authentication
 
 A request to register a signed preKey and some set of one-time use preKeys. PreKeys are used by clients to perform X3DH key agreement in order to
@@ -319,7 +411,7 @@ latest.
 
 <a name="signal.RequestPreKeys"></a>
 
-### RequestPreKeys
+#### RequestPreKeys
 Requires anonymous connection
 
 A request to retrieve preKey information for all registered devices for the given UserID except those listed in knownDeviceIDs.
@@ -337,7 +429,7 @@ A request to retrieve preKey information for all registered devices for the give
 
 <a name="signal.Unregister"></a>
 
-### Unregister
+#### Unregister
 Requires authentication
 
 Removes the recorded registration for the client's Address.
@@ -356,7 +448,7 @@ Removes the recorded registration for the client's Address.
 
 
 
-## Scalar Value Types
+### Scalar Value Types
 
 | .proto Type | Notes | C++ | Java | Python | Go | C# | PHP | Ruby |
 | ----------- | ----- | --- | ---- | ------ | -- | -- | --- | ---- |
