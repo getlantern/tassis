@@ -73,8 +73,7 @@ return {registrationID, signedPreKey, oneTimePreKey}
 `
 )
 
-func New(opts *redis.Options) (db.DB, error) {
-	client := redis.NewClient(opts)
+func New(client *redis.Client) (db.DB, error) {
 	registerScriptSHA, err := client.ScriptLoad(context.Background(), registerScript).Result()
 	if err != nil {
 		return nil, errors.New("Unable to load registerScript: %v", err)

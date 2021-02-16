@@ -33,7 +33,8 @@ func (t *topic) Publish(msg []byte) error {
 	return nil
 }
 
-func (t *topic) Close() {
+func (t *topic) Close() error {
+	return nil
 }
 
 func (t *topic) ack(seq int) {
@@ -97,10 +98,11 @@ func (s *subscriber) Messages() <-chan broker.Message {
 	return s.ch
 }
 
-func (s *subscriber) Close() {
+func (s *subscriber) Close() error {
 	s.closeOnce.Do(func() {
 		close(s.closeCh)
 	})
+	return nil
 }
 
 type membroker struct {
