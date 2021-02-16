@@ -1,7 +1,7 @@
-// redisbroker implements the ../broker.Broker interface using Redis streams.
+// redisbroker implements the ../broker.Broker interface using Redis streams. It can run on a cluster.
 //
 // Each Topic gets its own stream at topic:{<topic>}, for example if the topic is "abcde" the stream is at key "topic:{abcde}".
-// The curly braces around the topic indicate that the topic is used as the sharding key when running on a Redis cluster.
+// The {} braces around the topic indicate that the topic is used as the sharding key when running on a Redis cluster.
 //
 // Streams are append-only logs from which clients may read starting at any offset, where the offset is determined by the ID
 // of the message stored in the stream. redisbroker takes care of tracking the highest previously acknowledged offset by
@@ -41,6 +41,7 @@ type redisBroker struct {
 	nextSubscriberID  int64
 }
 
+// New constructs a new Redis-backed Broker that connects with the given client.
 func New(client *redis.Client) broker.Broker {
 	b := &redisBroker{
 		client:            client,

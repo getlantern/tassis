@@ -1,3 +1,12 @@
+// redisdb provides an implementation of the ../db.DB interface backed by a Redis database. It can run on a cluster.
+//
+// It uses the following data model:
+//
+//   device:{<userID>}:<deviceID> - a Map containing the registration information for a given device
+//   user->devices:{<userID>}     - a Set of all of a user's registered devices
+//   otpk:{<userID>}:<deviceID>   - a List of available one-time pre keys for the given device, used as a queue with LPUSH and LPOP.
+//
+// The {} braces around userID indicate that the userID is used as the sharding key when running on a Redis cluster.
 package redisdb
 
 import (
@@ -73,6 +82,7 @@ return {registrationID, signedPreKey, oneTimePreKey}
 `
 )
 
+// New constructs a new Redis-backed DB that connects with the given client.
 func New(client *redis.Client) (db.DB, error) {
 	registerScriptSHA, err := client.ScriptLoad(context.Background(), registerScript).Result()
 	if err != nil {
@@ -229,16 +239,16 @@ func (d *redisDB) Close() error {
 	return d.client.Close()
 }
 
-func userDevicesKey(userID identity.UserID) string {
-	return "user->devices:{" + userID.String() + "}"
-}
-
 func deviceKey(userID identity.UserID, deviceID uint32) string {
-	return fmt.Sprintf("{%v}:%d", userID.String(), deviceID)
+	return fmt.Sprintf("device:{%v}:%d", userID.String(), deviceID)
 }
 
 func deviceKeyFromString(userID identity.UserID, deviceID string) string {
-	return fmt.Sprintf("{%v}:%v", userID.String(), deviceID)
+	return fmt.Sprintf("device:{%v}:%v", userID.String(), deviceID)
+}
+
+func userDevicesKey(userID identity.UserID) string {
+	return "user->devices:{" + userID.String() + "}"
 }
 
 func oneTimePreKeysKey(deviceKey string) string {
