@@ -21,7 +21,7 @@ func TestServiceInMemory(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	testsupport.TestService(t, database, func(t *testing.T) testsupport.ClientConnectionLike {
+	testsupport.TestService(t, false, database, func(t *testing.T) testsupport.ClientConnectionLike {
 		conn, err := srvc.Connect()
 		require.NoError(t, err)
 		return conn

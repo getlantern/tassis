@@ -54,8 +54,11 @@ func (msg *message) Data() []byte {
 }
 
 func (msg *message) Acker() func() error {
+	t := msg.t
+	seq := msg.seq
+
 	return func() error {
-		msg.t.ack(msg.seq)
+		t.ack(seq)
 		return nil
 	}
 }

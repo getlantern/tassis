@@ -21,5 +21,5 @@ func TestWebSocketClientWithRealDatabaseAndBroker(t *testing.T) {
 	b := redisbroker.New(client)
 	d, err := redisdb.New(client)
 	require.NoError(t, err)
-	testWebSocketClient(t, d, b)
+	testWebSocketClient(t, true, d, b)
 }

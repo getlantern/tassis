@@ -31,7 +31,10 @@ type ClientConnectionLike interface {
 	Close()
 }
 
-func TestService(t *testing.T, database db.DB, connect func(t *testing.T) ClientConnectionLike) {
+// TestService runs a comprehensive test of the service API. If testMultiClientMessaging is false, it will omit scenarios
+// that involve multiple recipient clients of the same messages. This is primarily used to avoid testing those scenarios on the
+// membroker, which can't support them.
+func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, connect func(t *testing.T) ClientConnectionLike) {
 	// roundTrip sends a message to the server and verifies that a corresponding ACK
 	// is received, ignoring any non-ack messages that arrive first
 	roundTrip := func(t *testing.T, client ClientConnectionLike, msg *model.Message) {
@@ -77,7 +80,7 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 	}
 
 	// login logs a client in
-	login := func(userID identity.UserID, deviceID uint32, privateKey identity.PrivateKey) ClientConnectionLike {
+	login := func(t *testing.T, userID identity.UserID, deviceID uint32, privateKey identity.PrivateKey) ClientConnectionLike {
 		client, msg := doLogin(t, userID, deviceID, privateKey)
 		ack := client.Receive()
 		require.Equal(t, msg.Sequence, ack.Sequence)
@@ -125,22 +128,22 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 	deviceB1 := uint32(21)
 	deviceB2 := uint32(22)
 
-	clientA1 := login(userA, deviceA1, userAKeyPair.Private)
+	clientA1 := login(t, userA, deviceA1, userAKeyPair.Private)
 	defer clientA1.Close()
 	clientA1Anonymous := connectAnonymous()
 	defer clientA1Anonymous.Close()
 
-	clientA2 := login(userA, deviceA2, userAKeyPair.Private)
+	clientA2 := login(t, userA, deviceA2, userAKeyPair.Private)
 	defer clientA2.Close()
 	clientA2Anonymous := connectAnonymous()
 	defer clientA2Anonymous.Close()
 
-	clientB1 := login(userB, deviceB1, userBKeyPair.Private)
+	clientB1 := login(t, userB, deviceB1, userBKeyPair.Private)
 	defer clientB1.Close()
 	clientB1Anonymous := connectAnonymous()
 	defer clientB1Anonymous.Close()
 
-	clientB2 := login(userB, deviceB2, userBKeyPair.Private)
+	clientB2 := login(t, userB, deviceB2, userBKeyPair.Private)
 	defer clientB2.Close()
 	clientB2Anonymous := connectAnonymous()
 	defer clientB2Anonymous.Close()
@@ -263,9 +266,41 @@ func TestService(t *testing.T, database db.DB, connect func(t *testing.T) Client
 			},
 			UnidentifiedSenderMessage: []byte("ciphertext"),
 		}}))
-		msg := clientB1.Receive().GetInboundMessage()
-		require.Equal(t, "ciphertext", string(msg))
+		msg := clientB1.Receive()
+		inboundMsg := msg.GetInboundMessage()
+		require.Equal(t, "ciphertext", string(inboundMsg))
+		clientB1.Send(messageBuilder.NewAck(msg))
 	})
+
+	if testMultiClientMessaging {
+		t.Run("new recipient after prior ack should receive only new message, old client should receive new message as well", func(t *testing.T) {
+			roundTrip(t, clientA1Anonymous, messageBuilder.Build(&model.Message_OutboundMessage{&model.OutboundMessage{
+				To: &model.Address{
+					UserID:   userB,
+					DeviceID: deviceB1,
+				},
+				UnidentifiedSenderMessage: []byte("ciphertext2"),
+			}}))
+			clientB1Extra := login(t, userB, deviceB1, userBKeyPair.Private)
+			defer clientB1Extra.Close()
+			msg := clientB1Extra.Receive()
+			inboundMsg := msg.GetInboundMessage()
+			require.Equal(t, "ciphertext2", string(inboundMsg))
+			msg = clientB1.Receive()
+			inboundMsg = msg.GetInboundMessage()
+			require.Equal(t, "ciphertext2", string(inboundMsg))
+		})
+
+		t.Run("new recipient without prior ack should receive old message, old client should receive none", func(t *testing.T) {
+			clientB1Extra := login(t, userB, deviceB1, userBKeyPair.Private)
+			defer clientB1Extra.Close()
+			msg := clientB1Extra.Receive()
+			inboundMsg := msg.GetInboundMessage()
+			require.Equal(t, "ciphertext2", string(inboundMsg))
+			clientB1Extra.Send(messageBuilder.NewAck(msg))
+			require.Zero(t, clientB1.Drain())
+		})
+	}
 
 	t.Run("unregister user and then request pre-keys for now non-existing user", func(t *testing.T) {
 		roundTrip(t, clientA1, messageBuilder.Build(&model.Message_Unregister{&model.Unregister{}}))

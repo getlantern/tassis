@@ -2,6 +2,9 @@ package redisbroker
 
 import (
 	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/getlantern/golog"
@@ -14,20 +17,50 @@ var (
 	log = golog.LoggerFor("redisdb")
 )
 
-type message redis.XMessage
+type message struct {
+	b    *redisBroker
+	sub  *subscriber
+	id   string
+	data []byte
+}
 
 func (msg *message) Data() []byte {
-	return []byte(msg.Values["data"].(string))
+	return msg.data
 }
 
 func (msg *message) Acker() func() error {
+	a := &acker{
+		b:   msg.b,
+		sub: msg.sub,
+		id:  msg.id,
+	}
+	return a.ack
+}
+
+type acker struct {
+	b   *redisBroker
+	sub *subscriber
+	id  string
+}
+
+func (a *acker) ack() error {
+	a.sub.highOffsetMx.Lock()
+	shouldAck := a.id >= a.sub.highOffset
+	a.sub.highOffsetMx.Unlock()
+	if shouldAck {
+		return a.b.client.Set(context.Background(), offsetName(a.sub.stream), a.id, 0).Err()
+	}
 	return nil
 }
 
 type subscriber struct {
-	b        *redisBroker
-	stream   string
-	messages chan broker.Message
+	id           int64
+	b            *redisBroker
+	stream       string
+	messages     chan broker.Message
+	highOffset   string
+	highOffsetMx sync.Mutex
+	closeOnce    sync.Once
 }
 
 func (sub *subscriber) Messages() <-chan broker.Message {
@@ -35,7 +68,9 @@ func (sub *subscriber) Messages() <-chan broker.Message {
 }
 
 func (sub *subscriber) Close() error {
-	sub.b.subscriberRemoved <- sub
+	sub.closeOnce.Do(func() {
+		sub.b.subscriberRemoved <- sub
+	})
 	return nil
 }
 
@@ -62,6 +97,7 @@ type redisBroker struct {
 	client            *redis.Client
 	subscriberAdded   chan *subscriber
 	subscriberRemoved chan *subscriber
+	nextSubscriberID  int64
 }
 
 func New(client *redis.Client) broker.Broker {
@@ -75,7 +111,7 @@ func New(client *redis.Client) broker.Broker {
 }
 
 func (b *redisBroker) handleSubscriptions() {
-	subscribers := make(map[string]*subscriber)
+	subscribers := make(map[string]map[int64]*subscriber)
 	for {
 		if len(subscribers) == 0 {
 			// wait for a new subscriber
@@ -85,32 +121,44 @@ func (b *redisBroker) handleSubscriptions() {
 
 		select {
 		case newSubscriber := <-b.subscriberAdded:
-			oldSubscriber, hasOldSubscription := subscribers[newSubscriber.stream]
-			if hasOldSubscription {
-				// only one subscriber per stream at a time
-				close(oldSubscriber.messages)
+			subscribersForStream, found := subscribers[newSubscriber.stream]
+			if !found {
+				subscribersForStream = make(map[int64]*subscriber, 1)
+				subscribers[newSubscriber.stream] = subscribersForStream
 			}
-			subscribers[newSubscriber.stream] = newSubscriber
+			subscribersForStream[newSubscriber.id] = newSubscriber
 		case removedSubscriber := <-b.subscriberRemoved:
-			delete(subscribers, removedSubscriber.stream)
+			subscribersForStream, found := subscribers[removedSubscriber.stream]
+			if found {
+				delete(subscribersForStream, removedSubscriber.id)
+				if len(subscribersForStream) == 0 {
+					delete(subscribers, removedSubscriber.stream)
+				}
+			}
 			close(removedSubscriber.messages)
 		default:
 			streamNames := make([]string, 0, 2*len(subscribers))
-			streamOffests := make([]string, 0, len(subscribers))
-			for _, subscriber := range subscribers {
-				streamNames = append(streamNames, subscriber.stream)
-				streamOffests = append(streamOffests, "0")
+			streamOffsets := make([]string, 0, len(subscribers))
+			for stream, subscriberForStream := range subscribers {
+				streamNames = append(streamNames, stream)
+				// find the lowest offset needed by one of the applicable subscribers
+				highOffset := ""
+				for _, sub := range subscriberForStream {
+					if highOffset == "" || highOffset > sub.highOffset {
+						highOffset = sub.highOffset
+					}
+				}
+				streamOffsets = append(streamOffsets, highOffset)
 			}
-			streamNames = append(streamNames, streamOffests...)
+			streamNames = append(streamNames, streamOffsets...)
+
 			ctx, cancel := context.WithCancel(context.Background())
 
-			// cancel blocked xread on removed or added subscription
+			// cancel blocked xread on added subscription
 			go func() {
 				select {
 				case newSubscriber := <-b.subscriberAdded:
 					b.subscriberAdded <- newSubscriber
-				case removedSubscriber := <-b.subscriberRemoved:
-					b.subscriberRemoved <- removedSubscriber
 				}
 				cancel()
 			}()
@@ -120,15 +168,30 @@ func (b *redisBroker) handleSubscriptions() {
 				Streams: streamNames,
 			}).Result()
 			if err != nil {
-				log.Error(err)
-				time.Sleep(2 * time.Second)
+				if !errors.Is(err, context.Canceled) && !errors.Is(err, redis.Nil) {
+					// unexpected error, log and wait a little before reconnecting
+					log.Error(err)
+					time.Sleep(2 * time.Second)
+				}
 				continue
 			}
 			for _, stream := range streams {
-				subscriber := subscribers[stream.Stream]
-				for _, msg := range stream.Messages {
-					mmsg := message(msg)
-					subscriber.messages <- &mmsg
+				subscribersForStream := subscribers[stream.Stream]
+				for _, sub := range subscribersForStream {
+					for _, msg := range stream.Messages {
+						mmsg := &message{
+							b:    b,
+							id:   msg.ID,
+							sub:  sub,
+							data: []byte(msg.Values["data"].(string)),
+						}
+						sub.highOffsetMx.Lock()
+						if sub.highOffset < msg.ID {
+							sub.highOffset = msg.ID
+							sub.messages <- mmsg
+						}
+						sub.highOffsetMx.Unlock()
+					}
 				}
 			}
 		}
@@ -136,10 +199,21 @@ func (b *redisBroker) handleSubscriptions() {
 }
 
 func (b *redisBroker) NewSubscriber(topicName string) (broker.Subscriber, error) {
+	stream := streamName(topicName)
+	offset, err := b.client.Get(context.Background(), offsetName(stream)).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			offset = "0"
+		} else {
+			return nil, err
+		}
+	}
 	sub := &subscriber{
-		b:        b,
-		stream:   streamName(topicName),
-		messages: make(chan broker.Message, 100),
+		id:         atomic.AddInt64(&b.nextSubscriberID, 1),
+		b:          b,
+		stream:     stream,
+		highOffset: offset,
+		messages:   make(chan broker.Message, 100),
 	}
 	b.subscriberAdded <- sub
 	return sub, nil
@@ -153,5 +227,9 @@ func (b *redisBroker) NewPublisher(topicName string) (broker.Publisher, error) {
 }
 
 func streamName(topicName string) string {
-	return "topic:" + topicName
+	return "topic:{" + topicName + "}"
+}
+
+func offsetName(stream string) string {
+	return stream + ":offset"
 }

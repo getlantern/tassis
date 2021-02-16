@@ -7,14 +7,12 @@ require (
 	github.com/getlantern/golog v0.0.0-20201105130739-9586b8bde3a9
 	github.com/getlantern/hidden v0.0.0-20201229170000-e66e7f878730 // indirect
 	github.com/getlantern/ops v0.0.0-20200403153110-8476b16edcd6 // indirect
-	github.com/go-redis/redis/v7 v7.4.0
 	github.com/go-redis/redis/v8 v8.5.0
 	github.com/golang/protobuf v1.4.2
 	github.com/gorilla/websocket v1.4.2
 	github.com/hashicorp/golang-lru v0.5.4
-	github.com/pseudomuto/protoc-gen-doc v1.4.1 // indirect
-	github.com/robinjoseph08/redisqueue v1.1.0 // indirect
+	github.com/kr/pretty v0.1.0 // indirect
 	github.com/stretchr/testify v1.7.0
 	google.golang.org/protobuf v1.25.0
-	gopkg.in/redis.v5 v5.2.9 // indirect
+	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 )

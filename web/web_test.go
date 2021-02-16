@@ -25,10 +25,10 @@ import (
 func TestWebSocketClientInMemory(t *testing.T) {
 	b := membroker.New()
 	d := memdb.New()
-	testWebSocketClient(t, d, b)
+	testWebSocketClient(t, false, d, b)
 }
 
-func testWebSocketClient(t *testing.T, d db.DB, b broker.Broker) {
+func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d db.DB, b broker.Broker) {
 	srvc, err := service.New(&service.Opts{
 		DB:                   d,
 		Broker:               b,
@@ -48,7 +48,7 @@ func testWebSocketClient(t *testing.T, d db.DB, b broker.Broker) {
 	defer l.Close()
 	go server.Serve(l)
 
-	testsupport.TestService(t, d, func(t *testing.T) testsupport.ClientConnectionLike {
+	testsupport.TestService(t, testMultiClientMessaging, d, func(t *testing.T) testsupport.ClientConnectionLike {
 		url := fmt.Sprintf("ws://%s/api", l.Addr().String())
 		t.Logf("connecting to %v", url)
 		conn, _, err := websocket.DefaultDialer.Dial(url, nil)
@@ -122,5 +122,7 @@ func (client *websocketClientLike) Drain() int {
 }
 
 func (client *websocketClientLike) Close() {
+	log.Debug("closing websocket conn")
 	client.conn.Close()
+	log.Debug("closed websocket conn")
 }
