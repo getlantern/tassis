@@ -300,6 +300,16 @@ func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, co
 			clientB1Extra.Send(messageBuilder.NewAck(msg))
 			require.Zero(t, clientB1.Drain())
 		})
+
+		t.Run("new recipient without prior ack should receive old message, old client should receive none", func(t *testing.T) {
+			clientB1Extra := login(t, userB, deviceB1, userBKeyPair.Private)
+			defer clientB1Extra.Close()
+			msg := clientB1Extra.Receive()
+			inboundMsg := msg.GetInboundMessage()
+			require.Equal(t, "ciphertext2", string(inboundMsg))
+			clientB1Extra.Send(messageBuilder.NewAck(msg))
+			require.Zero(t, clientB1.Drain())
+		})
 	}
 
 	t.Run("unregister user and then request pre-keys for now non-existing user", func(t *testing.T) {
