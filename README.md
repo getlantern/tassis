@@ -9,3 +9,6 @@ This project uses protocol buffers. Follow the [tutorial](https://developers.goo
 
 ### Generating documentation
 Documentation is generated using [protoc-gen-doc](https://github.com/pseudomuto/protoc-gen-doc). You can install it with `go get -u github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc`
+
+### Dependencies
+This project depends on Redis 6.2+.

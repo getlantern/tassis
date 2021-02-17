@@ -20,6 +20,8 @@ package redisbroker
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -54,6 +56,9 @@ func New(client *redis.Client) broker.Broker {
 
 func (b *redisBroker) handleSubscriptions() {
 	subscribers := make(map[string]map[int64]*subscriber)
+	var streamNames []string
+	var streamOffsets []string
+	subscriberWasAdded := false
 	for {
 		if len(subscribers) == 0 {
 			// wait for a new subscriber
@@ -69,6 +74,7 @@ func (b *redisBroker) handleSubscriptions() {
 				subscribers[newSubscriber.stream] = subscribersForStream
 			}
 			subscribersForStream[newSubscriber.id] = newSubscriber
+			subscriberWasAdded = true
 		case removedSubscriber := <-b.subscriberRemoved:
 			subscribersForStream, found := subscribers[removedSubscriber.stream]
 			if found {
@@ -79,20 +85,23 @@ func (b *redisBroker) handleSubscriptions() {
 			}
 			close(removedSubscriber.messages)
 		default:
-			streamNames := make([]string, 0, 2*len(subscribers))
-			streamOffsets := make([]string, 0, len(subscribers))
-			for stream, subscriberForStream := range subscribers {
-				streamNames = append(streamNames, stream)
-				// find the lowest offset needed by one of the applicable subscribers
-				highOffset := ""
-				for _, sub := range subscriberForStream {
-					if highOffset == "" || highOffset > sub.highOffset {
-						highOffset = sub.highOffset
+			if subscriberWasAdded {
+				streamNames = make([]string, 0, 2*len(subscribers))
+				streamOffsets = make([]string, 0, len(subscribers))
+				for stream, subscriberForStream := range subscribers {
+					streamNames = append(streamNames, stream)
+					// find the lowest offset needed by one of the applicable subscribers
+					highOffset := ""
+					for _, sub := range subscriberForStream {
+						if highOffset == "" || idLessThan(sub.highOffset, highOffset) {
+							highOffset = sub.highOffset
+						}
 					}
+					streamOffsets = append(streamOffsets, highOffset)
 				}
-				streamOffsets = append(streamOffsets, highOffset)
+				subscriberWasAdded = false
 			}
-			streamNames = append(streamNames, streamOffsets...)
+			streamsWithOffsets := append(streamNames, streamOffsets...)
 
 			ctx, cancel := context.WithCancel(context.Background())
 
@@ -107,7 +116,8 @@ func (b *redisBroker) handleSubscriptions() {
 
 			streams, err := b.client.XRead(ctx, &redis.XReadArgs{
 				Block:   30 * time.Second,
-				Streams: streamNames,
+				Streams: streamsWithOffsets,
+				Count:   1000,
 			}).Result()
 			if err != nil {
 				if !errors.Is(err, context.Canceled) && !errors.Is(err, redis.Nil) {
@@ -117,8 +127,9 @@ func (b *redisBroker) handleSubscriptions() {
 				}
 				continue
 			}
-			for _, stream := range streams {
+			for idx, stream := range streams {
 				subscribersForStream := subscribers[stream.Stream]
+				highOffset := ""
 				for _, sub := range subscribersForStream {
 					for _, msg := range stream.Messages {
 						mmsg := &message{
@@ -128,13 +139,22 @@ func (b *redisBroker) handleSubscriptions() {
 							data: []byte(msg.Values["data"].(string)),
 						}
 						sub.highOffsetMx.Lock()
-						if sub.highOffset < msg.ID {
+						if idLessThan(sub.highOffset, msg.ID) {
 							sub.highOffset = msg.ID
 							sub.messages <- mmsg
 						}
 						sub.highOffsetMx.Unlock()
 					}
+
+					sub.highOffsetMx.Lock()
+					if highOffset == "" || idLessThan(sub.highOffset, highOffset) {
+						highOffset = sub.highOffset
+					}
+					sub.highOffsetMx.Unlock()
 				}
+
+				// update offset on stream for next read
+				streamOffsets[idx] = highOffset
 			}
 		}
 	}
@@ -250,4 +270,18 @@ func streamName(topicName string) string {
 
 func offsetName(stream string) string {
 	return "offset:" + stream
+}
+
+func idLessThan(a, b string) bool {
+	aParts := strings.Split(a, "-")
+	bParts := strings.Split(b, "-")
+	if aParts[0] < bParts[0] {
+		return true
+	}
+	if len(aParts) == 1 || len(bParts) == 1 {
+		return false
+	}
+	aSeq, _ := strconv.Atoi(aParts[1])
+	bSeq, _ := strconv.Atoi(bParts[1])
+	return aSeq < bSeq
 }
