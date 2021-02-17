@@ -79,7 +79,7 @@ func TrimStreams(client *redis.Client, maxLen int, batchSize int) error {
 		}
 		_, err = p.Exec(ctx)
 		if err != nil {
-			log.Errorf("error while reading trimming streams to offsets, ignoring: %v", err)
+			log.Errorf("error while trimming streams to max length, ignoring: %v", err)
 		}
 	}
 }
