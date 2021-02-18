@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -99,7 +100,7 @@ func main() {
 		// if err != nil {
 		// 	log.Fatalf("Failed to load client certificate: %v", err)
 		// }
-		redisCACert, err := keyman.LoadCertificateFromPEMBytes([]byte(redisCA))
+		redisCACert, err := keyman.LoadCertificateFromPEMBytes([]byte(strings.Replace(redisCA, "\\n", "\n", -1)))
 		if err != nil {
 			log.Fatalf("Failed to load CA cert: %v", err)
 		}
