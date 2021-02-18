@@ -5,11 +5,9 @@ go 1.15
 // +heroku goVersion go1.15.6
 
 require (
-	github.com/getlantern/elevate v0.0.0-20200430163644-2881a121236d // indirect
 	github.com/getlantern/errors v1.0.1
 	github.com/getlantern/golog v0.0.0-20201105130739-9586b8bde3a9
 	github.com/getlantern/hidden v0.0.0-20201229170000-e66e7f878730 // indirect
-	github.com/getlantern/keyman v0.0.0-20200820153608-cfd0ee278507
 	github.com/getlantern/ops v0.0.0-20200403153110-8476b16edcd6 // indirect
 	github.com/go-redis/redis/v8 v8.5.0
 	github.com/golang/protobuf v1.4.2

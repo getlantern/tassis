@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"net/http"
@@ -15,7 +16,6 @@ import (
 	"github.com/go-redis/redis/v8"
 
 	"github.com/getlantern/golog"
-	"github.com/getlantern/keyman"
 
 	"github.com/getlantern/tassis/broker/redisbroker"
 	"github.com/getlantern/tassis/db/redisdb"
@@ -25,16 +25,16 @@ import (
 )
 
 var (
-	httpPort            = os.Getenv("PORT") // passed by Herok
-	pprofAddr           = os.Getenv("PPROF_ADDR")
-	redisURL            = os.Getenv("REDIS_URL")
-	redisPoolSize       = os.Getenv("REDIS_POOL_SIZE")
-	redisCA             = os.Getenv("REDIS_CA")
-	redisClientKeyFile  = flag.String("pkfile", "", "Redis private key file")
-	redisClientCertFile = flag.String("certfile", "", "Redis certificate file")
-	checkKeysInterval   = flag.Duration("checkprekeys", 5*time.Minute, "how frequently to check if device is low on prekeys")
-	lowPreKeysLimit     = flag.Int("lowprekeyslimit", 10, "what number of prekeys ")
-	webTimeout          = flag.Duration("webtimeout", 60*time.Second, "timeout for web requests")
+	httpPort           = os.Getenv("PORT") // passed by Herok
+	pprofAddr          = os.Getenv("PPROF_ADDR")
+	redisURL           = os.Getenv("REDIS_URL")
+	redisPoolSize      = os.Getenv("REDIS_POOL_SIZE")
+	redisCAPEM         = os.Getenv("REDIS_CA_CERT")
+	redisClientCertPEM = os.Getenv("REDIS_CLIENT_CERT")
+	redisClientKeyPEM  = os.Getenv("REDIS_CLIENT_KEY")
+	checkKeysInterval  = flag.Duration("checkprekeys", 5*time.Minute, "how frequently to check if device is low on prekeys")
+	lowPreKeysLimit    = flag.Int("lowprekeyslimit", 10, "what number of prekeys ")
+	webTimeout         = flag.Duration("webtimeout", 60*time.Second, "timeout for web requests")
 
 	log = golog.LoggerFor("tassis")
 )
@@ -71,43 +71,35 @@ func main() {
 		log.Fatalf("Failed to parse Redis URL: %v", err)
 	}
 
-	var tlsConfig *tls.Config
+	log.Debugf("Connecting to redis at %v", redisAddr)
 
+	var tlsConfig *tls.Config
 	if !useTLS {
 		log.Debug("WARNING: connecting to Redis without TLS")
 	} else {
 		log.Debug("Connecting to Redis with TLS")
-		if redisCA == "" {
-			log.Fatal("Please specify a REDIS_CA")
+		if redisCAPEM == "" {
+			log.Fatal("Please specify a REDIS_CA_CERT")
 		}
-		// if _, err := os.Stat(*redisCAFile); os.IsNotExist(err) {
-		// 	log.Fatal("Cannot find certificate authority file")
-		// }
-		// if *redisClientKeyFile == "" {
-		// 	log.Fatal("Please set a client private key file")
-		// }
-		// if _, err := os.Stat(*redisClientKeyFile); os.IsNotExist(err) {
-		// 	log.Fatal("Cannot find client private key file")
-		// }
-		// if *redisClientCertFile == "" {
-		// 	log.Fatal("Please set a client certificate file")
-		// }
-		// if _, err := os.Stat(*redisClientCertFile); os.IsNotExist(err) {
-		// 	log.Fatal("Cannot find client certificate file")
-		// }
+		if redisClientCertPEM == "" {
+			log.Fatal("Please specify a REDIS_CLIENT_CERT")
+		}
+		if redisClientKeyPEM == "" {
+			log.Fatal("Please specify a REDIS_CLIENT_KEY")
+		}
 
-		// redisClientCert, err := tls.LoadX509KeyPair(*redisClientCertFile, *redisClientKeyFile)
-		// if err != nil {
-		// 	log.Fatalf("Failed to load client certificate: %v", err)
-		// }
-		redisCACert, err := keyman.LoadCertificateFromPEMBytes([]byte(strings.Replace(redisCA, "\\n", "\n", -1)))
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(cleanPEMNewLines(redisCAPEM)) {
+			log.Fatal("Unable to find any certs in REDIS_CA_CERT")
+		}
+		redisClientCert, err := tls.X509KeyPair(cleanPEMNewLines(redisClientCertPEM), cleanPEMNewLines(redisClientKeyPEM))
 		if err != nil {
-			log.Fatalf("Failed to load CA cert: %v", err)
+			log.Fatalf("Failed to load Redis Client cert and key: %v", err)
 		}
 
 		tlsConfig = &tls.Config{
-			RootCAs: redisCACert.PoolContainingCert(),
-			// Certificates:       []tls.Certificate{redisClientCert},
+			RootCAs:            pool,
+			Certificates:       []tls.Certificate{redisClientCert},
 			ClientSessionCache: tls.NewLRUClientSessionCache(100),
 		}
 	}
@@ -172,4 +164,8 @@ func toFloat(str string, onErr float64) float64 {
 	} else {
 		return f
 	}
+}
+
+func cleanPEMNewLines(pem string) []byte {
+	return []byte(strings.Replace(pem, "\\n", "\n", -1))
 }
