@@ -99,15 +99,7 @@ func (client *websocketClient) Out() chan<- *model.Message {
 }
 
 func (client *websocketClient) Send(msg *model.Message) {
-	b, err := proto.Marshal(msg)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	err = client.conn.WriteMessage(websocket.BinaryMessage, b)
-	if err != nil {
-		log.Error(err)
-	}
+	client.out <- msg
 }
 
 func (client *websocketClient) In() <-chan *model.Message {
