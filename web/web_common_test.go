@@ -8,7 +8,7 @@ import (
 
 	"github.com/getlantern/tassis/broker"
 	"github.com/getlantern/tassis/db"
-	"github.com/getlantern/tassis/forwarder/memforwarder"
+	"github.com/getlantern/tassis/forwarder/webforwarder"
 	"github.com/getlantern/tassis/presence/mempresence"
 	"github.com/getlantern/tassis/service"
 	"github.com/getlantern/tassis/service/serviceimpl"
@@ -39,12 +39,11 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d func() d
 				}
 				time.Sleep(100 * time.Millisecond)
 			}
-			require.Zero(t, handler.ActiveConnections(), "shouldn't have any active connections after waiting 2 seconds")
+			require.True(t, handler.ActiveConnections() <= 1, "should have 1 or fewer any active connections after waiting 2 seconds")
 		}
 	}()
 
 	presenceRepo := mempresence.NewRepository()
-	services := make(map[string]service.Service, 0)
 	buildServiceAndDB := func(t *testing.T, serverID int) (service.Service, db.DB) {
 		l, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
@@ -57,13 +56,12 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d func() d
 			DB:                   database,
 			Broker:               b(),
 			PresenceRepo:         presenceRepo,
-			Forwarder:            memforwarder.New(services),
+			Forwarder:            webforwarder.New(100),
 			CheckPreKeysInterval: testsupport.CheckPreKeysInterval,
 			LowPreKeysLimit:      testsupport.LowPreKeysLimit,
 			NumPreKeysToRequest:  testsupport.NumPreKeysToRequest,
 		})
 		require.NoError(t, err)
-		services[addr] = srvc
 
 		handler := NewHandler(srvc)
 		handlers = append(handlers, handler)
