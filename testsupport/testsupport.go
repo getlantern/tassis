@@ -19,6 +19,9 @@ const (
 	slightlyMoreThanCheckPreKeysInterval = 110 * time.Millisecond
 	LowPreKeysLimit                      = 3
 	NumPreKeysToRequest                  = 4
+
+	server1 = 1
+	server2 = 2
 )
 
 var (
@@ -28,7 +31,16 @@ var (
 // TestService runs a comprehensive test of the service API. If testMultiClientMessaging is false, it will omit scenarios
 // that involve multiple recipient clients of the same messages. This is primarily used to avoid testing those scenarios on the
 // membroker, which can't support them.
-func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, connect func(t *testing.T) service.ClientConnection) {
+func TestService(t *testing.T, testMultiClientMessaging bool, buildServiceAndDB func(t *testing.T, serverID int) (service.Service, db.DB)) {
+	servicesByID := make(map[int]service.Service, 0)
+	dbsByID := make(map[int]db.DB, 0)
+	s1, db1 := buildServiceAndDB(t, 1)
+	s2, db2 := buildServiceAndDB(t, 2)
+	servicesByID[1] = s1
+	servicesByID[2] = s2
+	dbsByID[1] = db1
+	dbsByID[2] = db2
+
 	// roundTrip sends a message to the server and verifies that a corresponding ACK
 	// is received, ignoring any non-ack messages that arrive first
 	roundTrip := func(t *testing.T, client service.ClientConnection, msg *model.Message) {
@@ -45,8 +57,9 @@ func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, co
 		}
 	}
 
-	doLogin := func(t *testing.T, userID identity.UserID, deviceID uint32, privateKey identity.PrivateKey) (service.ClientConnection, *model.Message) {
-		client := connect(t)
+	doLogin := func(t *testing.T, serverID int, userID identity.UserID, deviceID uint32, privateKey identity.PrivateKey) (service.ClientConnection, *model.Message) {
+		client, err := servicesByID[serverID].Connect()
+		require.NoError(t, err)
 		authChallenge := client.Receive().GetAuthChallenge()
 		require.Len(t, authChallenge.Nonce, 32)
 
@@ -74,15 +87,16 @@ func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, co
 	}
 
 	// login logs a client in
-	login := func(t *testing.T, userID identity.UserID, deviceID uint32, privateKey identity.PrivateKey) service.ClientConnection {
-		client, msg := doLogin(t, userID, deviceID, privateKey)
+	login := func(t *testing.T, serverID int, userID identity.UserID, deviceID uint32, privateKey identity.PrivateKey) service.ClientConnection {
+		client, msg := doLogin(t, serverID, userID, deviceID, privateKey)
 		ack := client.Receive()
 		require.Equal(t, msg.Sequence, ack.Sequence)
 		return client
 	}
 
-	connectAnonymous := func() service.ClientConnection {
-		client := connect(t)
+	connectAnonymous := func(serverID int) service.ClientConnection {
+		client, err := servicesByID[serverID].Connect()
+		require.NoError(t, err)
 		client.Receive()
 		return client
 	}
@@ -122,24 +136,24 @@ func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, co
 	deviceB1 := uint32(21)
 	deviceB2 := uint32(22)
 
-	clientA1 := login(t, userA, deviceA1, userAKeyPair.Private)
+	clientA1 := login(t, server1, userA, deviceA1, userAKeyPair.Private)
 	defer clientA1.Close()
-	clientA1Anonymous := connectAnonymous()
+	clientA1Anonymous := connectAnonymous(server1)
 	defer clientA1Anonymous.Close()
 
-	clientA2 := login(t, userA, deviceA2, userAKeyPair.Private)
+	clientA2 := login(t, server1, userA, deviceA2, userAKeyPair.Private)
 	defer clientA2.Close()
-	clientA2Anonymous := connectAnonymous()
+	clientA2Anonymous := connectAnonymous(server1)
 	defer clientA2Anonymous.Close()
 
-	clientB1 := login(t, userB, deviceB1, userBKeyPair.Private)
+	clientB1 := login(t, server1, userB, deviceB1, userBKeyPair.Private)
 	defer clientB1.Close()
-	clientB1Anonymous := connectAnonymous()
+	clientB1Anonymous := connectAnonymous(server1)
 	defer clientB1Anonymous.Close()
 
-	clientB2 := login(t, userB, deviceB2, userBKeyPair.Private)
+	clientB2 := login(t, server1, userB, deviceB2, userBKeyPair.Private)
 	defer clientB2.Close()
-	clientB2Anonymous := connectAnonymous()
+	clientB2Anonymous := connectAnonymous(server1)
 	defer clientB2Anonymous.Close()
 
 	t.Run("login failure", func(t *testing.T) {
@@ -149,7 +163,7 @@ func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, co
 		require.NoError(t, err)
 		user := keyPair.Public.UserID()
 		device := uint32(1)
-		client, _ := doLogin(t, user, device, wrongKeyPair.Private)
+		client, _ := doLogin(t, server1, user, device, wrongKeyPair.Private)
 		defer client.Close()
 		msg := client.Receive()
 		err = msg.GetError()
@@ -275,7 +289,7 @@ func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, co
 				},
 				UnidentifiedSenderMessage: []byte("ciphertext2"),
 			}}))
-			clientB1Extra := login(t, userB, deviceB1, userBKeyPair.Private)
+			clientB1Extra := login(t, server1, userB, deviceB1, userBKeyPair.Private)
 			defer clientB1Extra.Close()
 			msg := clientB1Extra.Receive()
 			inboundMsg := msg.GetInboundMessage()
@@ -286,7 +300,7 @@ func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, co
 		})
 
 		t.Run("new recipient without prior ack should receive old message, old client should receive none", func(t *testing.T) {
-			clientB1Extra := login(t, userB, deviceB1, userBKeyPair.Private)
+			clientB1Extra := login(t, server1, userB, deviceB1, userBKeyPair.Private)
 			defer clientB1Extra.Close()
 			msg := clientB1Extra.Receive()
 			inboundMsg := msg.GetInboundMessage()
@@ -298,11 +312,38 @@ func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, co
 
 	t.Run("unregister user and then request pre-keys for now non-existing user", func(t *testing.T) {
 		roundTrip(t, clientA1, mb.Build(&model.Message_Unregister{&model.Unregister{}}))
-		_, err := database.PreKeysRemaining(userA, deviceA1)
+		_, err := dbsByID[1].PreKeysRemaining(userA, deviceA1)
 		require.EqualValues(t, model.ErrUnknownDevice, err, "device should be unknown after removal")
 		roundTrip(t, clientA2, mb.Build(&model.Message_Unregister{&model.Unregister{}}))
 		clientB1Anonymous.Send(requestPreKeys(userA))
 		err = clientB1Anonymous.Receive().GetError()
 		require.EqualValues(t, model.ErrUnknownUser.Error(), err.Error())
+	})
+
+	t.Run("test forwarding between tasses", func(t *testing.T) {
+		userCKeyPair, err := identity.GenerateKeyPair()
+		require.NoError(t, err)
+		userC := userCKeyPair.Public.UserID()
+		deviceC1 := uint32(31)
+
+		clientC1 := login(t, server1, userC, deviceC1, userCKeyPair.Private)
+		defer clientC1.Close()
+
+		roundTrip(t, clientC1, register(1, "spkC1", 31, 32, 33))
+
+		clientAnonymous := connectAnonymous(server2)
+		defer clientAnonymous.Close()
+
+		roundTrip(t, clientAnonymous, mb.Build(&model.Message_OutboundMessage{&model.OutboundMessage{
+			To: &model.Address{
+				UserID:   userC,
+				DeviceID: deviceC1,
+			},
+			UnidentifiedSenderMessage: []byte("forwarded"),
+		}}))
+		msg := clientC1.Receive()
+		inboundMsg := msg.GetInboundMessage()
+		require.Equal(t, "forwarded", string(inboundMsg))
+		clientC1.Send(mb.NewAck(msg))
 	})
 }

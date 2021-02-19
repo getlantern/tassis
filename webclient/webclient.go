@@ -21,6 +21,18 @@ type websocketService struct {
 	bufferDepth int
 }
 
+// NewService returns an implementation of service.Service that connects via websockets to the given url.
+func NewService(url string, bufferDepth int) service.Service {
+	return &websocketService{
+		url:         url,
+		bufferDepth: bufferDepth,
+	}
+}
+
+func (srvc *websocketService) Connect() (service.ClientConnection, error) {
+	return Connect(srvc.url, srvc.bufferDepth)
+}
+
 // Connect creates a new ServiceConnection using a websocket to the given url.
 // bufferDepth specifies how many messages to buffer in either direction.
 func Connect(url string, bufferDepth int) (service.ClientConnection, error) {

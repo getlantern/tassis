@@ -4,6 +4,12 @@ import (
 	"github.com/getlantern/tassis/model"
 )
 
+// Service is a tassis service that handles key distribution and message transport.
+type Service interface {
+	// Connect connects to the Service and returns a ClientConnection that can be used to interact with the service.
+	Connect() (ClientConnection, error)
+}
+
 // ClientConnection represents a client connection to a Service
 type ClientConnection interface {
 	// Out returns a channel with which clients can send messages to the service

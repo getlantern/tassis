@@ -10,7 +10,5 @@ import (
 )
 
 func TestWebSocketClientInMemory(t *testing.T) {
-	b := membroker.New()
-	d := memdb.New()
-	testWebSocketClient(t, false, d, b)
+	testWebSocketClient(t, false, memdb.New, membroker.New)
 }

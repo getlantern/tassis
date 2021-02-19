@@ -17,6 +17,7 @@ import (
 
 	"github.com/getlantern/tassis/broker"
 	"github.com/getlantern/tassis/db"
+	"github.com/getlantern/tassis/forwarder"
 	"github.com/getlantern/tassis/identity"
 	"github.com/getlantern/tassis/model"
 	"github.com/getlantern/tassis/presence"
@@ -29,15 +30,28 @@ var (
 )
 
 type Opts struct {
-	PublicAddr           string
-	DB                   db.DB
-	Broker               broker.Broker
-	PresenceRepo         presence.Repository
-	PublisherCacheSize   int
+	// The address at which this service publicly reachable. Used by other tasses to forward messages to us for consumption by our clients. Required.
+	PublicAddr string
+	// The DB to use for storing user device information and keys
+	DB db.DB
+	// The Broker to use for transmitting user messages between devices
+	Broker broker.Broker
+	// The Repository to use for advertising and finding user device presence (defaults to a local in-memory implementation)
+	PresenceRepo presence.Repository
+	// The Forwarder to use for forwarding user messages to other tasses. This should only be used for background tassis processes.
+	Forwarder *forwarder.Forwarder
+	// How many publishers to cache (can reduce number connect attempts to broker for performance), defaults to 1
+	PublisherCacheSize int
+	// How frequently to check if a device's one time preKeys are getting low, defaults to 5 minutes
 	CheckPreKeysInterval time.Duration
-	LowPreKeysLimit      int
-	NumPreKeysToRequest  int
-	ForwardingTimeout    time.Duration
+	// How many one time preKeys to consider low enough to warn the client, defaults to 10
+	LowPreKeysLimit int
+	// How many one time preKeys to request from the client when they get low, defaults to LowPreKeysLimit * 2
+	NumPreKeysToRequest int
+	// How many parallel routines to run for forwarding messages to other tasses, defaults to 1
+	ForwardingParallelism int
+	// If a message has been failing to forward for more than ForwardingTimeout, it is permanently discarded. Defaults to 1 hour.
+	ForwardingTimeout time.Duration
 }
 
 func (opts *Opts) ApplyDefaults() {
@@ -53,9 +67,13 @@ func (opts *Opts) ApplyDefaults() {
 		opts.LowPreKeysLimit = 10
 		log.Debugf("Defaulted LowPreKeysLimit to: %d", opts.LowPreKeysLimit)
 	}
-	if opts.NumPreKeysToRequest == 0 {
+	if opts.NumPreKeysToRequest <= 0 {
 		opts.NumPreKeysToRequest = opts.LowPreKeysLimit * 2
 		log.Debugf("Defaulted NumPreKeysToRequest to: %d", opts.NumPreKeysToRequest)
+	}
+	if opts.ForwardingParallelism <= 0 {
+		opts.ForwardingParallelism = 1
+		log.Debugf("Defaulted ForwardingParallelism to: %d", opts.ForwardingParallelism)
 	}
 	if opts.ForwardingTimeout == 0 {
 		opts.ForwardingTimeout = 1 * time.Hour
@@ -68,17 +86,18 @@ func (opts *Opts) ApplyDefaults() {
 }
 
 type Service struct {
-	publicAddr           string
-	db                   db.DB
-	broker               broker.Broker
-	presenceRepo         presence.Repository
-	checkPreKeysInterval time.Duration
-	lowPreKeysLimit      int
-	numPreKeysToRequest  int
-	forwardingTimeout    time.Duration
-	publisherCache       *lru.Cache
-	publisherCacheMx     sync.Mutex
-	// forwarders           map[string]*forwarder
+	publicAddr            string
+	db                    db.DB
+	broker                broker.Broker
+	presenceRepo          presence.Repository
+	forwarder             *forwarder.Forwarder
+	checkPreKeysInterval  time.Duration
+	lowPreKeysLimit       int
+	numPreKeysToRequest   int
+	forwardingParallelism int
+	forwardingTimeout     time.Duration
+	publisherCache        *lru.Cache
+	publisherCacheMx      sync.Mutex
 }
 
 func New(opts *Opts) (*Service, error) {
@@ -93,22 +112,27 @@ func New(opts *Opts) (*Service, error) {
 		return nil, err
 	}
 	srvc := &Service{
-		publicAddr:     strings.ToLower(opts.PublicAddr),
-		db:             opts.DB,
-		broker:         opts.Broker,
-		presenceRepo:   opts.PresenceRepo,
-		publisherCache: publisherCache,
-		// forwarders:           make(map[string]*forwarder),
-		checkPreKeysInterval: opts.CheckPreKeysInterval,
-		lowPreKeysLimit:      opts.LowPreKeysLimit,
-		numPreKeysToRequest:  opts.NumPreKeysToRequest,
-		forwardingTimeout:    opts.ForwardingTimeout,
+		publicAddr:            strings.ToLower(opts.PublicAddr),
+		db:                    opts.DB,
+		broker:                opts.Broker,
+		presenceRepo:          opts.PresenceRepo,
+		forwarder:             opts.Forwarder,
+		publisherCache:        publisherCache,
+		checkPreKeysInterval:  opts.CheckPreKeysInterval,
+		lowPreKeysLimit:       opts.LowPreKeysLimit,
+		numPreKeysToRequest:   opts.NumPreKeysToRequest,
+		forwardingTimeout:     opts.ForwardingTimeout,
+		forwardingParallelism: opts.ForwardingParallelism,
 	}
-	// handle messages to federated tasses
-	// err = srvc.startHandlingFederatedOutbound()
-	// if err != nil {
-	// 	return nil, errors.New("unable to start handling federated outbound messages: %v", err)
-	// }
+
+	if srvc.forwarder != nil {
+		log.Debug("will forward messages to other tasses as appropriate")
+		err = srvc.startForwarding()
+		if err != nil {
+			return nil, errors.New("unable to start handling federated outbound messages: %v", err)
+		}
+	}
+
 	return srvc, nil
 }
 
@@ -433,20 +457,21 @@ func (conn *clientConnection) handleOutboundMessage(msg *model.Message) {
 	}
 	host = strings.ToLower(host)
 
+	// log.Debugf("Handling outbound for: %v", identity.UserID(outboundMessage.To.UserID))
 	topic := topicFor(outboundMessage.To.UserID, outboundMessage.To.DeviceID)
 	data := outboundMessage.GetUnidentifiedSenderMessage()
-	// if conn.srvc.publicAddr != host {
-	// 	// this is a federated message, write it to a forwarding topic
-	// 	topic = forwardingTopic
-	// 	data, err = proto.Marshal(&model.ForwardedMessage{
-	// 		ForwardTo: host,
-	// 		Message:   outboundMessage,
-	// 	})
-	// 	if err != nil {
-	// 		conn.error(msg, err)
-	// 		return
-	// 	}
-	// }
+	if conn.srvc.publicAddr != host {
+		// this is a federated message, write it to a forwarding topic
+		topic = forwardingTopic
+		data, err = proto.Marshal(&model.ForwardedMessage{
+			ForwardTo: host,
+			Message:   outboundMessage,
+		})
+		if err != nil {
+			conn.error(msg, err)
+			return
+		}
+	}
 
 	// publish
 	publisher, err := conn.srvc.publisherFor(topic)

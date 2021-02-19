@@ -2,44 +2,25 @@
 package memforwarder
 
 import (
-	"sync"
-
 	"github.com/getlantern/errors"
 
 	"github.com/getlantern/tassis/forwarder"
-	"github.com/getlantern/tassis/model"
 	"github.com/getlantern/tassis/service"
 )
 
-// New constructs a new forwarder using a map of known services running in-process with each other
-func New(services map[string]service.Service) forwarder.Send {
-
-}
-
-type sender struct {
-	services map[string]service.Service
-	conns    map[string]service.ClientConnection
-	mx       sync.Mutex
-}
-
-func (s *sender) send(msg *model.ForwardedMessage, onSuccess func(), onError func(err error)) {
-	s.mx.Lock()
-	conn, found := s.conns[msg.ForwardTo]
-	if !found {
-		srvc, found := s.services[msg.ForwardTo]
+func New(services map[string]service.Service) *forwarder.Forwarder {
+	dial := func(host string) (service.ClientConnection, error) {
+		srvc, found := services[host]
 		if !found {
-			onError(errors.New("unknown host: %v", msg.ForwardTo))
-			s.mx.Unlock()
-			return
+			return nil, errors.New("unknown host: %v", host)
 		}
 		var err error
-		conn, err = srvc.Connect()
+		conn, err := srvc.Connect()
 		if err != nil {
-			onError(errors.New("unable to connect to %v: %v", msg.ForwardTo, err))
-			s.mx.Unlock()
-			return
+			return nil, errors.New("unable to connect to %v: %v", host, err)
 		}
+		return conn, nil
 	}
-	msg
-	conn.Send(msg.GetMessage())
+
+	return forwarder.New(dial)
 }
