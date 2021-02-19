@@ -1,4 +1,4 @@
-# tassis [![Build and Test](https://github.com/getlantern/tassis/workflows/Build%20and%20Test/badge.svg)](https://github.com/getlantern/tassis/actions?query=workflow%3A%22Build+and+Test%22)&nbsp;[![Coverage Status](https://coveralls.io/repos/github/getlantern/tassis/badge.svg?branch=main&t=mfU9Gw)](https://coveralls.io/github/getlantern/tassis?branch=main)&nbsp;[![Go Reference](https://pkg.go.dev/badge/github.com/getlantern/tassis.svg)](https://pkg.go.dev/github.com/getlantern/tassis)
+# tassis [![Build and Test](https://github.com/getlantern/tassis/workflows/Build%20and%20Test/badge.svg)](https://github.com/getlantern/tassis/actions?query=workflow%3A%22Build+and+Test%22)&nbsp;[![Coverage Status](https://coveralls.io/repos/github/getlantern/tassis/badge.svg?branch=main&t=PPGsvs)](https://coveralls.io/github/getlantern/tassis?branch=main)&nbsp;[![Go Reference](https://pkg.go.dev/badge/github.com/getlantern/tassis.svg)](https://pkg.go.dev/github.com/getlantern/tassis)
 
 <!-- &nbsp;[![Sourcegraph](https://sourcegraph.com/github.com/getlantern/tassis/-/badge.svg)](https://sourcegraph.com/github.com/getlantern/tassis?badge) -->
 
