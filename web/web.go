@@ -1,3 +1,4 @@
+// package web provides a websocket frontend to a tassis service
 package web
 
 import (
@@ -11,7 +12,7 @@ import (
 	"github.com/getlantern/golog"
 
 	"github.com/getlantern/tassis/model"
-	"github.com/getlantern/tassis/service"
+	"github.com/getlantern/tassis/service/serviceimpl"
 )
 
 var (
@@ -28,12 +29,12 @@ type Handler interface {
 }
 
 type handler struct {
-	srvc              *service.Service
+	srvc              *serviceimpl.Service
 	upgrader          *websocket.Upgrader
 	activeConnections int64
 }
 
-func NewHandler(srvc *service.Service) Handler {
+func NewHandler(srvc *serviceimpl.Service) Handler {
 	return &handler{
 		srvc:     srvc,
 		upgrader: &websocket.Upgrader{},
@@ -46,7 +47,7 @@ func (h *handler) ActiveConnections() int {
 
 func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	if req.RequestURI != "/api" {
-		log.Errorf("Unknown request URI: %v", req.RequestURI)
+		log.Errorf("unknown request URI: %v", req.RequestURI)
 		resp.WriteHeader(http.StatusNotFound)
 		return
 	}

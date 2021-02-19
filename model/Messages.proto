@@ -125,8 +125,8 @@ message PreKeysLow {
 //
 // A message from one client to another.
 message OutboundMessage {
-    Address to                        = 1; // The Address of the message recipient
-    bytes   unidentifiedSenderMessage = 2; // A sealed sender message (opaque to tassis). This is what will be delivered to the recipient.
+    Address to                        = 1;  // The Address of the message recipient
+    bytes   unidentifiedSenderMessage = 2;  // A sealed sender message (opaque to tassis). This is what will be delivered to the recipient.
 }
 
 // The envelope for all messages sent to/from clients.
@@ -147,3 +147,11 @@ message Message {
         bytes           inboundMessage  = 12;
     }
 }
+
+// Used internally by tassis for messages that are to be forwarded to a federated tassis
+message ForwardedMessage {
+    OutboundMessage message     = 1;  // The message that's being forwarded
+    string          forwardTo   = 2;  // The address of the host to which we're forwarding this message
+    int64           firstFailed = 3;  // The unix timestamp in seconds for when the message first failed
+}
+

@@ -6,6 +6,7 @@ import (
 	"github.com/getlantern/tassis/db"
 	"github.com/getlantern/tassis/identity"
 	"github.com/getlantern/tassis/model"
+	"github.com/getlantern/tassis/service"
 	"google.golang.org/protobuf/proto"
 
 	"testing"
@@ -24,20 +25,13 @@ var (
 	mb model.MessageBuilder
 )
 
-type ClientConnectionLike interface {
-	Send(msg *model.Message)
-	Receive() *model.Message
-	Drain() int
-	Close()
-}
-
 // TestService runs a comprehensive test of the service API. If testMultiClientMessaging is false, it will omit scenarios
 // that involve multiple recipient clients of the same messages. This is primarily used to avoid testing those scenarios on the
 // membroker, which can't support them.
-func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, connect func(t *testing.T) ClientConnectionLike) {
+func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, connect func(t *testing.T) service.ClientConnection) {
 	// roundTrip sends a message to the server and verifies that a corresponding ACK
 	// is received, ignoring any non-ack messages that arrive first
-	roundTrip := func(t *testing.T, client ClientConnectionLike, msg *model.Message) {
+	roundTrip := func(t *testing.T, client service.ClientConnection, msg *model.Message) {
 		client.Send(msg)
 		for {
 			ack := client.Receive()
@@ -51,7 +45,7 @@ func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, co
 		}
 	}
 
-	doLogin := func(t *testing.T, userID identity.UserID, deviceID uint32, privateKey identity.PrivateKey) (ClientConnectionLike, *model.Message) {
+	doLogin := func(t *testing.T, userID identity.UserID, deviceID uint32, privateKey identity.PrivateKey) (service.ClientConnection, *model.Message) {
 		client := connect(t)
 		authChallenge := client.Receive().GetAuthChallenge()
 		require.Len(t, authChallenge.Nonce, 32)
@@ -80,14 +74,14 @@ func TestService(t *testing.T, testMultiClientMessaging bool, database db.DB, co
 	}
 
 	// login logs a client in
-	login := func(t *testing.T, userID identity.UserID, deviceID uint32, privateKey identity.PrivateKey) ClientConnectionLike {
+	login := func(t *testing.T, userID identity.UserID, deviceID uint32, privateKey identity.PrivateKey) service.ClientConnection {
 		client, msg := doLogin(t, userID, deviceID, privateKey)
 		ack := client.Receive()
 		require.Equal(t, msg.Sequence, ack.Sequence)
 		return client
 	}
 
-	connectAnonymous := func() ClientConnectionLike {
+	connectAnonymous := func() service.ClientConnection {
 		client := connect(t)
 		client.Receive()
 		return client

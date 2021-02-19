@@ -86,15 +86,15 @@ return {registrationID, signedPreKey, oneTimePreKey}
 func New(client *redis.Client) (db.DB, error) {
 	registerScriptSHA, err := client.ScriptLoad(context.Background(), registerScript).Result()
 	if err != nil {
-		return nil, errors.New("Unable to load registerScript: %v", err)
+		return nil, errors.New("unable to load registerScript: %v", err)
 	}
 	unregisterScriptSHA, err := client.ScriptLoad(context.Background(), unregisterScript).Result()
 	if err != nil {
-		return nil, errors.New("Unable to load unregisterScript: %v", err)
+		return nil, errors.New("unable to load unregisterScript: %v", err)
 	}
 	getPreKeyScriptSHA, err := client.ScriptLoad(context.Background(), getPreKeyScript).Result()
 	if err != nil {
-		return nil, errors.New("Unable to load getPreKeyScript: %v", err)
+		return nil, errors.New("unable to load getPreKeyScript: %v", err)
 	}
 	return &redisDB{
 		client:              client,

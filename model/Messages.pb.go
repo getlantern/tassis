@@ -944,6 +944,70 @@ func (*Message_OutboundMessage) isMessage_Payload() {}
 
 func (*Message_InboundMessage) isMessage_Payload() {}
 
+// Used internally by tassis for messages that are to be forwarded to a federated tassis
+type ForwardedMessage struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Message     *OutboundMessage `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`          // The message that's being forwarded
+	ForwardTo   string           `protobuf:"bytes,2,opt,name=forwardTo,proto3" json:"forwardTo,omitempty"`      // The address of the host to which we're forwarding this message
+	FirstFailed int64            `protobuf:"varint,3,opt,name=firstFailed,proto3" json:"firstFailed,omitempty"` // The unix timestamp in seconds for when the message first failed
+}
+
+func (x *ForwardedMessage) Reset() {
+	*x = ForwardedMessage{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_model_Messages_proto_msgTypes[13]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ForwardedMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ForwardedMessage) ProtoMessage() {}
+
+func (x *ForwardedMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_model_Messages_proto_msgTypes[13]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ForwardedMessage.ProtoReflect.Descriptor instead.
+func (*ForwardedMessage) Descriptor() ([]byte, []int) {
+	return file_model_Messages_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ForwardedMessage) GetMessage() *OutboundMessage {
+	if x != nil {
+		return x.Message
+	}
+	return nil
+}
+
+func (x *ForwardedMessage) GetForwardTo() string {
+	if x != nil {
+		return x.ForwardTo
+	}
+	return ""
+}
+
+func (x *ForwardedMessage) GetFirstFailed() int64 {
+	if x != nil {
+		return x.FirstFailed
+	}
+	return 0
+}
+
 var File_model_Messages_proto protoreflect.FileDescriptor
 
 var file_model_Messages_proto_rawDesc = []byte{
@@ -1042,10 +1106,18 @@ var file_model_Messages_proto_rawDesc = []byte{
 	0x0a, 0x0e, 0x69, 0x6e, 0x62, 0x6f, 0x75, 0x6e, 0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65,
 	0x18, 0x0c, 0x20, 0x01, 0x28, 0x0c, 0x48, 0x00, 0x52, 0x0e, 0x69, 0x6e, 0x62, 0x6f, 0x75, 0x6e,
 	0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x42, 0x09, 0x0a, 0x07, 0x70, 0x61, 0x79, 0x6c,
-	0x6f, 0x61, 0x64, 0x42, 0x24, 0x5a, 0x22, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f,
-	0x6d, 0x2f, 0x67, 0x65, 0x74, 0x6c, 0x61, 0x6e, 0x74, 0x65, 0x72, 0x6e, 0x2f, 0x74, 0x61, 0x73,
-	0x73, 0x69, 0x73, 0x2f, 0x6d, 0x6f, 0x64, 0x65, 0x6c, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f,
-	0x33,
+	0x6f, 0x61, 0x64, 0x22, 0x85, 0x01, 0x0a, 0x10, 0x46, 0x6f, 0x72, 0x77, 0x61, 0x72, 0x64, 0x65,
+	0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x31, 0x0a, 0x07, 0x6d, 0x65, 0x73, 0x73,
+	0x61, 0x67, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x17, 0x2e, 0x73, 0x69, 0x67, 0x6e,
+	0x61, 0x6c, 0x2e, 0x4f, 0x75, 0x74, 0x62, 0x6f, 0x75, 0x6e, 0x64, 0x4d, 0x65, 0x73, 0x73, 0x61,
+	0x67, 0x65, 0x52, 0x07, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x1c, 0x0a, 0x09, 0x66,
+	0x6f, 0x72, 0x77, 0x61, 0x72, 0x64, 0x54, 0x6f, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x09,
+	0x66, 0x6f, 0x72, 0x77, 0x61, 0x72, 0x64, 0x54, 0x6f, 0x12, 0x20, 0x0a, 0x0b, 0x66, 0x69, 0x72,
+	0x73, 0x74, 0x46, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x18, 0x03, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0b,
+	0x66, 0x69, 0x72, 0x73, 0x74, 0x46, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x42, 0x24, 0x5a, 0x22, 0x67,
+	0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x67, 0x65, 0x74, 0x6c, 0x61, 0x6e,
+	0x74, 0x65, 0x72, 0x6e, 0x2f, 0x74, 0x61, 0x73, 0x73, 0x69, 0x73, 0x2f, 0x6d, 0x6f, 0x64, 0x65,
+	0x6c, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -1060,21 +1132,22 @@ func file_model_Messages_proto_rawDescGZIP() []byte {
 	return file_model_Messages_proto_rawDescData
 }
 
-var file_model_Messages_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_model_Messages_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_model_Messages_proto_goTypes = []interface{}{
-	(*Ack)(nil),             // 0: signal.Ack
-	(*Error)(nil),           // 1: signal.Error
-	(*Address)(nil),         // 2: signal.Address
-	(*Login)(nil),           // 3: signal.Login
-	(*AuthChallenge)(nil),   // 4: signal.AuthChallenge
-	(*AuthResponse)(nil),    // 5: signal.AuthResponse
-	(*Register)(nil),        // 6: signal.Register
-	(*Unregister)(nil),      // 7: signal.Unregister
-	(*RequestPreKeys)(nil),  // 8: signal.RequestPreKeys
-	(*PreKey)(nil),          // 9: signal.PreKey
-	(*PreKeysLow)(nil),      // 10: signal.PreKeysLow
-	(*OutboundMessage)(nil), // 11: signal.OutboundMessage
-	(*Message)(nil),         // 12: signal.Message
+	(*Ack)(nil),              // 0: signal.Ack
+	(*Error)(nil),            // 1: signal.Error
+	(*Address)(nil),          // 2: signal.Address
+	(*Login)(nil),            // 3: signal.Login
+	(*AuthChallenge)(nil),    // 4: signal.AuthChallenge
+	(*AuthResponse)(nil),     // 5: signal.AuthResponse
+	(*Register)(nil),         // 6: signal.Register
+	(*Unregister)(nil),       // 7: signal.Unregister
+	(*RequestPreKeys)(nil),   // 8: signal.RequestPreKeys
+	(*PreKey)(nil),           // 9: signal.PreKey
+	(*PreKeysLow)(nil),       // 10: signal.PreKeysLow
+	(*OutboundMessage)(nil),  // 11: signal.OutboundMessage
+	(*Message)(nil),          // 12: signal.Message
+	(*ForwardedMessage)(nil), // 13: signal.ForwardedMessage
 }
 var file_model_Messages_proto_depIdxs = []int32{
 	2,  // 0: signal.Login.address:type_name -> signal.Address
@@ -1090,11 +1163,12 @@ var file_model_Messages_proto_depIdxs = []int32{
 	9,  // 10: signal.Message.preKey:type_name -> signal.PreKey
 	10, // 11: signal.Message.preKeysLow:type_name -> signal.PreKeysLow
 	11, // 12: signal.Message.outboundMessage:type_name -> signal.OutboundMessage
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	11, // 13: signal.ForwardedMessage.message:type_name -> signal.OutboundMessage
+	14, // [14:14] is the sub-list for method output_type
+	14, // [14:14] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_model_Messages_proto_init() }
@@ -1259,6 +1333,18 @@ func file_model_Messages_proto_init() {
 				return nil
 			}
 		}
+		file_model_Messages_proto_msgTypes[13].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ForwardedMessage); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	file_model_Messages_proto_msgTypes[12].OneofWrappers = []interface{}{
 		(*Message_Ack)(nil),
@@ -1279,7 +1365,7 @@ func file_model_Messages_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_model_Messages_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

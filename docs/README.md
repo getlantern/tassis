@@ -159,6 +159,7 @@ end
     - [AuthChallenge](#signal.AuthChallenge)
     - [AuthResponse](#signal.AuthResponse)
     - [Error](#signal.Error)
+    - [ForwardedMessage](#signal.ForwardedMessage)
     - [Login](#signal.Login)
     - [Message](#signal.Message)
     - [OutboundMessage](#signal.OutboundMessage)
@@ -284,6 +285,23 @@ Indicates than an error occurred processing a request.
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | An identifier for the error, like "unknown_user" |
 | description | [string](#string) |  | Optional additional information about the error |
+
+
+
+
+
+
+<a name="signal.ForwardedMessage"></a>
+
+#### ForwardedMessage
+Used internally by tassis for messages that are to be forwarded to a federated tassis
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| message | [OutboundMessage](#signal.OutboundMessage) |  | The message that's being forwarded |
+| forwardTo | [string](#string) |  | The address of the host to which we're forwarding this message |
+| firstFailed | [int64](#int64) |  | The unix timestamp in seconds for when the message first failed |
 
 
 

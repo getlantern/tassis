@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"sync/atomic"
+	"time"
 )
 
 var (
@@ -56,6 +57,22 @@ func TypedError(err error) *Error {
 		return typed
 	}
 	return ErrUnknown.WithDescription(err.Error())
+}
+
+// MarkFailed marks this message as failed (couldn't be forwarded)
+func (msg *ForwardedMessage) MarkFailed() {
+	if msg.FirstFailed == 0 {
+		msg.FirstFailed = time.Now().Unix()
+	}
+}
+
+// HasBeenFailingFor indicates how long the message has been failing since it first started failing.
+// This returns 0 if the message has never failed before.
+func (msg *ForwardedMessage) HasBeenFailingFor() time.Duration {
+	if msg.FirstFailed == 0 {
+		return 0
+	}
+	return time.Duration(time.Now().Unix()-msg.FirstFailed) * time.Second
 }
 
 type MessageBuilder struct {

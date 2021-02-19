@@ -1,8 +1,9 @@
-package service
+package serviceimpl
 
 import (
 	"github.com/getlantern/tassis/broker/membroker"
 	"github.com/getlantern/tassis/db/memdb"
+	"github.com/getlantern/tassis/service"
 	"github.com/getlantern/tassis/testsupport"
 
 	"testing"
@@ -22,7 +23,7 @@ func TestServiceInMemory(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	testsupport.TestService(t, false, database, func(t *testing.T) testsupport.ClientConnectionLike {
+	testsupport.TestService(t, false, database, func(t *testing.T) service.ClientConnection {
 		conn, err := srvc.Connect()
 		require.NoError(t, err)
 		return conn

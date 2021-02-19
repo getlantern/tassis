@@ -6,14 +6,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/websocket"
-	"google.golang.org/protobuf/proto"
-
 	"github.com/getlantern/tassis/broker"
 	"github.com/getlantern/tassis/db"
-	"github.com/getlantern/tassis/model"
 	"github.com/getlantern/tassis/service"
+	"github.com/getlantern/tassis/service/serviceimpl"
 	"github.com/getlantern/tassis/testsupport"
+	"github.com/getlantern/tassis/webclient"
 
 	"testing"
 
@@ -25,7 +23,7 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d db.DB, b
 	require.NoError(t, err)
 	defer l.Close()
 
-	srvc, err := service.New(&service.Opts{
+	srvc, err := serviceimpl.New(&serviceimpl.Opts{
 		PublicAddr:           l.Addr().String(),
 		DB:                   d,
 		Broker:               b,
@@ -42,14 +40,12 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d db.DB, b
 
 	go server.Serve(l)
 
-	testsupport.TestService(t, testMultiClientMessaging, d, func(t *testing.T) testsupport.ClientConnectionLike {
-		url := fmt.Sprintf("ws://%s/api", l.Addr().String())
-		t.Logf("connecting to %v", url)
-		conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	url := fmt.Sprintf("ws://%s/api", l.Addr().String())
+
+	testsupport.TestService(t, testMultiClientMessaging, d, func(t *testing.T) service.ClientConnection {
+		conn, err := webclient.Connect(url, 100)
 		require.NoError(t, err)
-		result := &websocketClientLike{conn, make(chan *model.Message)}
-		go result.read()
-		return result
+		return conn
 	})
 
 	for i := 0; i < 20; i++ {
@@ -60,63 +56,4 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d db.DB, b
 		time.Sleep(100 * time.Millisecond)
 	}
 	require.Zero(t, handler.ActiveConnections(), "shouldn't have any active connections after waiting 2 seconds")
-}
-
-type websocketClientLike struct {
-	conn *websocket.Conn
-	msgs chan *model.Message
-}
-
-func (client *websocketClientLike) read() {
-	defer close(client.msgs)
-
-	for {
-		_, b, err := client.conn.ReadMessage()
-		if err != nil {
-			log.Error(err)
-			return
-		}
-		msg := &model.Message{}
-		err = proto.Unmarshal(b, msg)
-		if err != nil {
-			log.Error(err)
-			return
-		}
-		client.msgs <- msg
-	}
-}
-
-func (client *websocketClientLike) Send(msg *model.Message) {
-	b, err := proto.Marshal(msg)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	err = client.conn.WriteMessage(websocket.BinaryMessage, b)
-	if err != nil {
-		log.Error(err)
-	}
-}
-
-func (client *websocketClientLike) Receive() *model.Message {
-	return <-client.msgs
-}
-
-func (client *websocketClientLike) Drain() int {
-	count := 0
-
-	for {
-		select {
-		case <-client.msgs:
-			count++
-		default:
-			return count
-		}
-	}
-}
-
-func (client *websocketClientLike) Close() {
-	log.Debug("closing websocket conn")
-	client.conn.Close()
-	log.Debug("closed websocket conn")
 }

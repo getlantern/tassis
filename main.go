@@ -19,7 +19,7 @@ import (
 
 	"github.com/getlantern/tassis/broker/redisbroker"
 	"github.com/getlantern/tassis/db/redisdb"
-	"github.com/getlantern/tassis/service"
+	"github.com/getlantern/tassis/service/serviceimpl"
 	"github.com/getlantern/tassis/testsupport"
 	"github.com/getlantern/tassis/web"
 )
@@ -131,7 +131,7 @@ func main() {
 		log.Fatalf("unable to start redisdb: %v", err)
 	}
 
-	srvc, err := service.New(&service.Opts{
+	srvc, err := serviceimpl.New(&serviceimpl.Opts{
 		DB:                   d,
 		Broker:               b,
 		CheckPreKeysInterval: testsupport.CheckPreKeysInterval,
