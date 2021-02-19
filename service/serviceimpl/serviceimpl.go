@@ -457,7 +457,6 @@ func (conn *clientConnection) handleOutboundMessage(msg *model.Message) {
 	}
 	host = strings.ToLower(host)
 
-	// log.Debugf("Handling outbound for: %v", identity.UserID(outboundMessage.To.UserID))
 	topic := topicFor(outboundMessage.To.UserID, outboundMessage.To.DeviceID)
 	data := outboundMessage.GetUnidentifiedSenderMessage()
 	if conn.srvc.publicAddr != host {
