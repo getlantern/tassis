@@ -21,7 +21,12 @@ import (
 )
 
 func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d db.DB, b broker.Broker) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer l.Close()
+
 	srvc, err := service.New(&service.Opts{
+		PublicAddr:           l.Addr().String(),
 		DB:                   d,
 		Broker:               b,
 		CheckPreKeysInterval: testsupport.CheckPreKeysInterval,
@@ -35,9 +40,6 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d db.DB, b
 		Handler: handler,
 	}
 
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	defer l.Close()
 	go server.Serve(l)
 
 	testsupport.TestService(t, testMultiClientMessaging, d, func(t *testing.T) testsupport.ClientConnectionLike {

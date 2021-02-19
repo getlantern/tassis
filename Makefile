@@ -24,4 +24,4 @@ ci:
 	act -r -s COVERALLS_TOKEN=$$COVERALLS_TOKEN
 
 smoke-test:
-	go test -tags "smoketest" github.com/getlantern/tassis/web
+	go test -count=1 -tags "smoketest" github.com/getlantern/tassis/web

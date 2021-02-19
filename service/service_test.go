@@ -13,6 +13,7 @@ import (
 func TestServiceInMemory(t *testing.T) {
 	database := memdb.New()
 	srvc, err := New(&Opts{
+		PublicAddr:           "localhost:0",
 		DB:                   database,
 		Broker:               membroker.New(),
 		CheckPreKeysInterval: testsupport.CheckPreKeysInterval,
