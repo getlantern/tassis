@@ -52,6 +52,8 @@ type Opts struct {
 	ForwardingParallelism int
 	// If a message has been failing to forward for more than ForwardingTimeout, it is permanently discarded. Defaults to 1 hour.
 	ForwardingTimeout time.Duration
+	// Determines how frequently to check for users who have transferred and send over their messages. Set to 0 or less to disable. Should only be used in a background tassis process.
+	UserTransferInterval time.Duration
 }
 
 func (opts *Opts) ApplyDefaults() {
@@ -96,6 +98,7 @@ type Service struct {
 	numPreKeysToRequest   int
 	forwardingParallelism int
 	forwardingTimeout     time.Duration
+	userTransferInterval  time.Duration
 	publisherCache        *lru.Cache
 	publisherCacheMx      sync.Mutex
 }
@@ -121,15 +124,23 @@ func New(opts *Opts) (*Service, error) {
 		checkPreKeysInterval:  opts.CheckPreKeysInterval,
 		lowPreKeysLimit:       opts.LowPreKeysLimit,
 		numPreKeysToRequest:   opts.NumPreKeysToRequest,
-		forwardingTimeout:     opts.ForwardingTimeout,
 		forwardingParallelism: opts.ForwardingParallelism,
+		forwardingTimeout:     opts.ForwardingTimeout,
+		userTransferInterval:  opts.UserTransferInterval,
 	}
 
 	if srvc.forwarder != nil {
 		log.Debug("will forward messages to other tasses as appropriate")
 		err = srvc.startForwarding()
 		if err != nil {
-			return nil, errors.New("unable to start handling federated outbound messages: %v", err)
+			return nil, errors.New("unable to start forwarding outbound messages: %v", err)
+		}
+
+		if srvc.userTransferInterval > 0 {
+			err = srvc.startUserTransfers()
+			if err != nil {
+				return nil, errors.New("unable to start handling user transfers: %v", err)
+			}
 		}
 	}
 

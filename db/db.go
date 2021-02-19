@@ -15,5 +15,7 @@ type DB interface {
 
 	PreKeysRemaining(userID identity.UserID, deviceID uint32) (int, error)
 
+	AllRegisteredDevices() ([]*model.Address, error)
+
 	Close() error
 }

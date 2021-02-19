@@ -1,8 +1,14 @@
 package serviceimpl
 
 import (
+	"time"
+
 	"github.com/golang/protobuf/proto"
 
+	"github.com/getlantern/errors"
+
+	"github.com/getlantern/tassis/broker"
+	"github.com/getlantern/tassis/identity"
 	"github.com/getlantern/tassis/model"
 )
 
@@ -64,4 +70,75 @@ func (srvc *Service) startForwarding() error {
 	}
 
 	return nil
+}
+
+func (srvc *Service) startUserTransfers() error {
+	publisher, err := srvc.publisherFor(forwardingTopic)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for {
+			time.Sleep(srvc.userTransferInterval)
+			addrs, err := srvc.db.AllRegisteredDevices()
+			if err != nil {
+				log.Errorf("unable to list registered devices: %v", err)
+				continue
+			}
+			for _, addr := range addrs {
+				host, err := srvc.presenceRepo.Find(addr)
+				if err != nil {
+					log.Error(err)
+					continue
+				}
+				if host != srvc.publicAddr {
+					// device moved to a different tassis, transfer messages
+					topic := topicFor(identity.UserID(addr.UserID), addr.DeviceID)
+					subscriber, err := srvc.broker.NewSubscriber(topic)
+					if err != nil {
+						continue
+					}
+					err = srvc.transferDeviceMessages(subscriber, addr, host, publisher)
+					if err != nil {
+						log.Error(err)
+					} else {
+						srvc.db.Unregister(identity.UserID(addr.UserID), addr.DeviceID)
+						// TODO: make sure we don't have any weird race conditions here if new messages come in after we did the transfer
+					}
+				}
+			}
+		}
+	}()
+
+	return nil
+}
+
+func (srvc *Service) transferDeviceMessages(subscriber broker.Subscriber, addr *model.Address, host string, publisher broker.Publisher) error {
+	defer subscriber.Close()
+
+	for {
+		select {
+		case brokerMsg := <-subscriber.Messages():
+			forwardedMsg := &model.ForwardedMessage{
+				Message: &model.OutboundMessage{
+					To:                        addr,
+					UnidentifiedSenderMessage: brokerMsg.Data(),
+				},
+				ForwardTo: host,
+			}
+			forwardedMsgBytes, err := proto.Marshal(forwardedMsg)
+			if err != nil {
+				return errors.New("unable to marshal message for transfer: %v", err)
+			}
+			err = publisher.Publish(forwardedMsgBytes)
+			if err != nil {
+				return errors.New("unable to publish message for transfer: %v", err)
+			}
+			brokerMsg.Acker()()
+		case <-time.After(srvc.userTransferInterval / 100):
+			// done
+			return nil
+		}
+	}
 }

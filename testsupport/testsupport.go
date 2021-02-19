@@ -19,6 +19,7 @@ const (
 	slightlyMoreThanCheckPreKeysInterval = 110 * time.Millisecond
 	LowPreKeysLimit                      = 3
 	NumPreKeysToRequest                  = 4
+	UserTransferInterval                 = 100 * time.Millisecond
 
 	server1 = 1
 	server2 = 2
@@ -345,5 +346,38 @@ func TestService(t *testing.T, testMultiClientMessaging bool, buildServiceAndDB 
 		inboundMsg := msg.GetInboundMessage()
 		require.Equal(t, "forwarded", string(inboundMsg))
 		clientC1.Send(mb.NewAck(msg))
+	})
+
+	t.Run("test user transfer between tasses", func(t *testing.T) {
+		userCKeyPair, err := identity.GenerateKeyPair()
+		require.NoError(t, err)
+		userC := userCKeyPair.Public.UserID()
+		deviceC1 := uint32(31)
+
+		clientC1 := login(t, server1, userC, deviceC1, userCKeyPair.Private)
+		defer clientC1.Close()
+
+		roundTrip(t, clientC1, register(1, "spkC1", 31, 32, 33))
+
+		clientAnonymous := connectAnonymous(server2)
+		defer clientAnonymous.Close()
+
+		roundTrip(t, clientAnonymous, mb.Build(&model.Message_OutboundMessage{&model.OutboundMessage{
+			To: &model.Address{
+				UserID:   userC,
+				DeviceID: deviceC1,
+			},
+			UnidentifiedSenderMessage: []byte("forwarded"),
+		}}))
+
+		clientC1AtServer2 := login(t, server2, userC, deviceC1, userCKeyPair.Private)
+		defer clientC1AtServer2.Close()
+
+		roundTrip(t, clientC1AtServer2, register(1, "spkC1", 34, 35, 36))
+
+		msg := clientC1AtServer2.Receive()
+		inboundMsg := msg.GetInboundMessage()
+		require.Equal(t, "forwarded", string(inboundMsg))
+		clientC1AtServer2.Send(mb.NewAck(msg))
 	})
 }

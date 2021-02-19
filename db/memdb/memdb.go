@@ -121,6 +121,27 @@ func (d *memdb) PreKeysRemaining(userID identity.UserID, deviceID uint32) (int, 
 	return len(device.OneTimePreKeys), nil
 }
 
+func (d *memdb) AllRegisteredDevices() ([]*model.Address, error) {
+	result := make([]*model.Address, 0)
+	d.mx.Lock()
+	defer d.mx.Unlock()
+
+	for userID, devices := range d.users {
+		for deviceID := range devices {
+			uid, err := identity.UserIDFromString(userID)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, &model.Address{
+				UserID:   uid,
+				DeviceID: deviceID,
+			})
+		}
+	}
+
+	return result, nil
+}
+
 func (d *memdb) Close() error {
 	return nil
 }

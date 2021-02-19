@@ -32,6 +32,7 @@ func TestServiceInMemory(t *testing.T) {
 			CheckPreKeysInterval: testsupport.CheckPreKeysInterval,
 			LowPreKeysLimit:      testsupport.LowPreKeysLimit,
 			NumPreKeysToRequest:  testsupport.NumPreKeysToRequest,
+			UserTransferInterval: testsupport.UserTransferInterval,
 		})
 		require.NoError(t, err)
 		services[srvc.publicAddr] = srvc

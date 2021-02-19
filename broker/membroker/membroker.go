@@ -73,6 +73,23 @@ type subscriber struct {
 func (s *subscriber) process() {
 	defer close(s.ch)
 
+	s.t.mx.Lock()
+	copyOfExisting := make(map[int][]byte, len(s.t.messages))
+	for seq, data := range s.t.messages {
+		copyOfExisting[seq] = data
+	}
+	s.t.mx.Unlock()
+
+	// re-enqueue old messages
+	for seq, data := range copyOfExisting {
+		s.ch <- &message{
+			t:    s.t,
+			seq:  seq,
+			data: data,
+		}
+	}
+
+	// forward new messages
 	for {
 		select {
 		case <-s.closeCh:
