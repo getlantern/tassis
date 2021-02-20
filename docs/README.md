@@ -300,7 +300,6 @@ Used internally by tassis for messages that are to be forwarded to a federated t
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | message | [OutboundMessage](#signal.OutboundMessage) |  | The message that's being forwarded |
-| forwardTo | [string](#string) |  | The address of the host to which we're forwarding this message |
 | firstFailed | [int64](#int64) |  | The unix timestamp in seconds for when the message first failed |
 
 

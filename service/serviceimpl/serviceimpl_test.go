@@ -32,6 +32,7 @@ func TestServiceInMemory(t *testing.T) {
 			CheckPreKeysInterval: testsupport.CheckPreKeysInterval,
 			LowPreKeysLimit:      testsupport.LowPreKeysLimit,
 			NumPreKeysToRequest:  testsupport.NumPreKeysToRequest,
+			ForwardingTimeout:    testsupport.ForwardingTimeout,
 			UserTransferInterval: testsupport.UserTransferInterval,
 		})
 		require.NoError(t, err)
@@ -39,5 +40,5 @@ func TestServiceInMemory(t *testing.T) {
 		return srvc, database
 	}
 
-	testsupport.TestService(t, false, buildServiceAndDB)
+	testsupport.TestService(t, false, presenceRepo, buildServiceAndDB)
 }

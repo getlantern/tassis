@@ -30,18 +30,18 @@ func New(dial Dial) *Forwarder {
 	}
 }
 
-// Forward forwards the given message to the tassis at msg.ForwardTo. Once it receives an ack or error response,
+// Forward forwards the given message to specified tassisHost. Once it receives an ack or error response,
 // it calls finished. If finished receives a nil error, that means the message was forwarded successfully.
-func (f *Forwarder) Forward(msg *model.ForwardedMessage, finished func(error)) {
+func (f *Forwarder) Forward(msg *model.ForwardedMessage, tassisHost string, finished func(error)) {
 	// TODO: we shouldn't just trust whatever addresses we get, maybe create a whitelist or some more sophisticated algorithm (blockchain?)
 	f.mx.Lock()
-	conn, found := f.conns[msg.ForwardTo]
+	conn, found := f.conns[tassisHost]
 	if !found {
 		var err error
 		// TODO: make sure we have a timeout here
-		conn, err = f.dial(msg.ForwardTo)
+		conn, err = f.dial(tassisHost)
 		if err != nil {
-			finished(errors.New("unable to connect to %v: %v", msg.ForwardTo, err))
+			finished(errors.New("unable to connect to %v: %v", tassisHost, err))
 			f.mx.Unlock()
 			return
 		}

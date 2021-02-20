@@ -39,30 +39,60 @@ func (srvc *Service) startForwarding() error {
 					continue
 				}
 
-				srvc.forwarder.Forward(msg, func(forwardingErr error) {
-					if forwardingErr == nil {
+				failMessage := func() {
+					msg.MarkFailed()
+					if msg.HasBeenFailingFor() > srvc.forwardingTimeout {
+						log.Debugf("discarding message that has been failing for longer than %v", srvc.forwardingTimeout)
 						ack()
 					} else {
-						msg.MarkFailed()
-						if msg.HasBeenFailingFor() > srvc.forwardingTimeout {
-							log.Debugf("disposing of message that has been failing for longer than %v", srvc.forwardingTimeout)
+						msgBytes, err := proto.Marshal(msg)
+						if err != nil {
+							log.Errorf("unable to marshal ForwardedMessage: %v", err)
+							ack()
+							return
+						}
+						err = republisher.Publish(msgBytes)
+						if err == nil {
 							ack()
 						} else {
-							msgBytes, err := proto.Marshal(msg)
-							if err != nil {
-								log.Errorf("unable to marshal ForwardedMessage: %v", err)
-								ack()
-								return
-							}
-							err = republisher.Publish(msgBytes)
-							if err == nil {
-								ack()
-							} else {
-								// this is an unusual case. don't ack so that message is not lost
-								// note - this will lead to the forwarding queue potentially getting quite large
-								// TODO: make sure we don't accidentally retransmit a boatload of messages
-							}
+							// this is an unusual case. don't ack so that message is not lost
+							// note - this will lead to the forwarding queue potentially getting quite large
+							// TODO: make sure we don't accidentally retransmit a boatload of messages
 						}
+					}
+				}
+
+				tassisHost, err := srvc.presenceRepo.Find(msg.GetMessage().To)
+				if err != nil {
+					log.Errorf("unable to find tassis host: %v", err)
+					failMessage()
+					continue
+				}
+
+				if tassisHost == srvc.publicAddr {
+					// user came back to us, just publish locally
+					topic := topicForAddr(msg.GetMessage().To)
+					publisher, err := srvc.publisherFor(topic)
+					if err != nil {
+						log.Errorf("unable to get publisher: %v", err)
+						failMessage()
+						continue
+					}
+					err = publisher.Publish(msg.GetMessage().GetUnidentifiedSenderMessage())
+					if err != nil {
+						log.Errorf("unable to publish: %v", err)
+						failMessage()
+						continue
+					}
+					ack()
+					continue
+				}
+
+				srvc.forwarder.Forward(msg, tassisHost, func(forwardingErr error) {
+					if forwardingErr != nil {
+						failMessage()
+					} else {
+						ack()
 					}
 				})
 			}
@@ -87,19 +117,19 @@ func (srvc *Service) startUserTransfers() error {
 				continue
 			}
 			for _, addr := range addrs {
-				host, err := srvc.presenceRepo.Find(addr)
+				tassisHost, err := srvc.presenceRepo.Find(addr)
 				if err != nil {
 					log.Error(err)
 					continue
 				}
-				if host != srvc.publicAddr {
+				if tassisHost != srvc.publicAddr {
 					// device moved to a different tassis, transfer messages
 					topic := topicFor(identity.UserID(addr.UserID), addr.DeviceID)
 					subscriber, err := srvc.broker.NewSubscriber(topic)
 					if err != nil {
 						continue
 					}
-					err = srvc.transferDeviceMessages(subscriber, addr, host, publisher)
+					err = srvc.transferDeviceMessages(subscriber, addr, publisher)
 					if err != nil {
 						log.Error(err)
 					} else {
@@ -114,7 +144,7 @@ func (srvc *Service) startUserTransfers() error {
 	return nil
 }
 
-func (srvc *Service) transferDeviceMessages(subscriber broker.Subscriber, addr *model.Address, host string, publisher broker.Publisher) error {
+func (srvc *Service) transferDeviceMessages(subscriber broker.Subscriber, addr *model.Address, publisher broker.Publisher) error {
 	defer subscriber.Close()
 
 	for {
@@ -125,7 +155,6 @@ func (srvc *Service) transferDeviceMessages(subscriber broker.Subscriber, addr *
 					To:                        addr,
 					UnidentifiedSenderMessage: brokerMsg.Data(),
 				},
-				ForwardTo: host,
 			}
 			forwardedMsgBytes, err := proto.Marshal(forwardedMsg)
 			if err != nil {

@@ -60,6 +60,7 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d func() d
 			CheckPreKeysInterval: testsupport.CheckPreKeysInterval,
 			LowPreKeysLimit:      testsupport.LowPreKeysLimit,
 			NumPreKeysToRequest:  testsupport.NumPreKeysToRequest,
+			ForwardingTimeout:    testsupport.ForwardingTimeout,
 			UserTransferInterval: testsupport.UserTransferInterval,
 		})
 		require.NoError(t, err)
@@ -76,5 +77,5 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d func() d
 		return webclient.NewService(url, 100), database
 	}
 
-	testsupport.TestService(t, testMultiClientMessaging, buildServiceAndDB)
+	testsupport.TestService(t, testMultiClientMessaging, presenceRepo, buildServiceAndDB)
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/getlantern/tassis/db"
 	"github.com/getlantern/tassis/identity"
 	"github.com/getlantern/tassis/model"
+	"github.com/getlantern/tassis/presence"
 	"github.com/getlantern/tassis/service"
 	"google.golang.org/protobuf/proto"
 
@@ -19,6 +20,7 @@ const (
 	slightlyMoreThanCheckPreKeysInterval = 110 * time.Millisecond
 	LowPreKeysLimit                      = 3
 	NumPreKeysToRequest                  = 4
+	ForwardingTimeout                    = 1000 * time.Millisecond
 	UserTransferInterval                 = 100 * time.Millisecond
 
 	server1 = 1
@@ -32,7 +34,7 @@ var (
 // TestService runs a comprehensive test of the service API. If testMultiClientMessaging is false, it will omit scenarios
 // that involve multiple recipient clients of the same messages. This is primarily used to avoid testing those scenarios on the
 // membroker, which can't support them.
-func TestService(t *testing.T, testMultiClientMessaging bool, buildServiceAndDB func(t *testing.T, serverID int) (service.Service, db.DB)) {
+func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo presence.Repository, buildServiceAndDB func(t *testing.T, serverID int) (service.Service, db.DB)) {
 	servicesByID := make(map[int]service.Service, 0)
 	dbsByID := make(map[int]db.DB, 0)
 	s1, db1 := buildServiceAndDB(t, 1)
@@ -335,16 +337,36 @@ func TestService(t *testing.T, testMultiClientMessaging bool, buildServiceAndDB 
 		clientAnonymous := connectAnonymous(server2)
 		defer clientAnonymous.Close()
 
+		deviceC1Addr := &model.Address{
+			UserID:   userC,
+			DeviceID: deviceC1,
+		}
+
+		// temporarily corrupt the presence repo to make sure that retries work and that messages time out
+		// if failing for too long.
+		origHost, err := presenceRepo.Find(deviceC1Addr)
+		require.NoError(t, err)
+		require.NoError(t, presenceRepo.Announce(deviceC1Addr, "garbage"))
+
 		roundTrip(t, clientAnonymous, mb.Build(&model.Message_OutboundMessage{&model.OutboundMessage{
-			To: &model.Address{
-				UserID:   userC,
-				DeviceID: deviceC1,
-			},
-			UnidentifiedSenderMessage: []byte("forwarded"),
+			To:                        deviceC1Addr,
+			UnidentifiedSenderMessage: []byte("shouldbelost"),
 		}}))
+		// sleep long enough for first message to get lost
+		time.Sleep(ForwardingTimeout * 2)
+
+		roundTrip(t, clientAnonymous, mb.Build(&model.Message_OutboundMessage{&model.OutboundMessage{
+			To:                        deviceC1Addr,
+			UnidentifiedSenderMessage: []byte("shouldbeforwarded"),
+		}}))
+		// sleep long enough to fail a few times but not get lost yet
+		time.Sleep(ForwardingTimeout / 2)
+
+		// fix presence and make sure 2nd message is received
+		require.NoError(t, presenceRepo.Announce(deviceC1Addr, origHost))
 		msg := clientC1.Receive()
 		inboundMsg := msg.GetInboundMessage()
-		require.Equal(t, "forwarded", string(inboundMsg))
+		require.Equal(t, "shouldbeforwarded", string(inboundMsg))
 		clientC1.Send(mb.NewAck(msg))
 	})
 
@@ -362,11 +384,12 @@ func TestService(t *testing.T, testMultiClientMessaging bool, buildServiceAndDB 
 		clientAnonymous := connectAnonymous(server2)
 		defer clientAnonymous.Close()
 
+		deviceC1Addr := &model.Address{
+			UserID:   userC,
+			DeviceID: deviceC1,
+		}
 		roundTrip(t, clientAnonymous, mb.Build(&model.Message_OutboundMessage{&model.OutboundMessage{
-			To: &model.Address{
-				UserID:   userC,
-				DeviceID: deviceC1,
-			},
+			To:                        deviceC1Addr,
 			UnidentifiedSenderMessage: []byte("forwarded"),
 		}}))
 
@@ -374,10 +397,28 @@ func TestService(t *testing.T, testMultiClientMessaging bool, buildServiceAndDB 
 		defer clientC1AtServer2.Close()
 
 		roundTrip(t, clientC1AtServer2, register(1, "spkC1", 34, 35, 36))
-
 		msg := clientC1AtServer2.Receive()
 		inboundMsg := msg.GetInboundMessage()
 		require.Equal(t, "forwarded", string(inboundMsg))
 		clientC1AtServer2.Send(mb.NewAck(msg))
+
+		// switch back to original server
+		roundTrip(t, clientC1, register(1, "spkC1", 37, 38, 39))
+		// temporarily corrupt the presence repo to make sure that retries work
+		origHost, err := presenceRepo.Find(deviceC1Addr)
+		require.NoError(t, err)
+		require.NoError(t, presenceRepo.Announce(deviceC1Addr, "garbage"))
+		roundTrip(t, clientAnonymous, mb.Build(&model.Message_OutboundMessage{&model.OutboundMessage{
+			To:                        deviceC1Addr,
+			UnidentifiedSenderMessage: []byte("backhome"),
+		}}))
+		time.Sleep(ForwardingTimeout / 2)
+
+		// fix presence to make sure message gets delivered
+		presenceRepo.Announce(deviceC1Addr, origHost)
+		msg = clientC1.Receive()
+		inboundMsg = msg.GetInboundMessage()
+		require.Equal(t, "backhome", string(inboundMsg))
+		clientC1.Send(mb.NewAck(msg))
 	})
 }

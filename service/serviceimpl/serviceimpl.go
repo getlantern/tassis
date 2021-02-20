@@ -461,21 +461,20 @@ func (conn *clientConnection) handleRequestPreKeys(msg *model.Message) {
 func (conn *clientConnection) handleOutboundMessage(msg *model.Message) {
 	outboundMessage := msg.GetOutboundMessage()
 
-	host, err := conn.srvc.presenceRepo.Find(outboundMessage.To)
+	tassisHost, err := conn.srvc.presenceRepo.Find(outboundMessage.To)
 	if err != nil {
 		conn.error(msg, err)
 		return
 	}
-	host = strings.ToLower(host)
+	tassisHost = strings.ToLower(tassisHost)
 
 	topic := topicFor(outboundMessage.To.UserID, outboundMessage.To.DeviceID)
 	data := outboundMessage.GetUnidentifiedSenderMessage()
-	if conn.srvc.publicAddr != host {
+	if conn.srvc.publicAddr != tassisHost {
 		// this is a federated message, write it to a forwarding topic
 		topic = forwardingTopic
 		data, err = proto.Marshal(&model.ForwardedMessage{
-			ForwardTo: host,
-			Message:   outboundMessage,
+			Message: outboundMessage,
 		})
 		if err != nil {
 			conn.error(msg, err)
@@ -514,6 +513,10 @@ func (srvc *Service) publisherFor(topic string) (broker.Publisher, error) {
 
 func topicFor(userID identity.UserID, deviceID uint32) string {
 	return fmt.Sprintf("%v:%d", userID.String(), deviceID)
+}
+
+func topicForAddr(addr *model.Address) string {
+	return topicFor(identity.UserID(addr.UserID), addr.DeviceID)
 }
 
 func (conn *clientConnection) ack(msg *model.Message) {
