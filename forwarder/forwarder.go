@@ -46,6 +46,7 @@ func (f *Forwarder) Forward(msg *model.ForwardedMessage, tassisHost string, fini
 			return
 		}
 		go f.readFrom(conn)
+		f.conns[tassisHost] = conn
 	}
 	fullMsg := f.mb.Build(&model.Message_OutboundMessage{msg.GetMessage()})
 	f.callbacks[fullMsg.Sequence] = finished

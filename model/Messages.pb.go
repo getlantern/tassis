@@ -951,8 +951,8 @@ type ForwardedMessage struct {
 	unknownFields protoimpl.UnknownFields
 
 	Message     *OutboundMessage `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`          // The message that's being forwarded
-	FirstFailed int64            `protobuf:"varint,2,opt,name=firstFailed,proto3" json:"firstFailed,omitempty"` // The unix timestamp in seconds for when the message first failed to forward
-	LastFailed  int64            `protobuf:"varint,3,opt,name=lastFailed,proto3" json:"lastFailed,omitempty"`   // The unix timestamp in seconds for when the message most recently failed to forward
+	FirstFailed int64            `protobuf:"varint,2,opt,name=firstFailed,proto3" json:"firstFailed,omitempty"` // The unix timestamp in nanoseconds for when the message first failed to forward
+	LastFailed  int64            `protobuf:"varint,3,opt,name=lastFailed,proto3" json:"lastFailed,omitempty"`   // The unix timestamp in nanoseconds for when the message most recently failed to forward
 }
 
 func (x *ForwardedMessage) Reset() {

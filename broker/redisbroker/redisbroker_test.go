@@ -1,6 +1,7 @@
 package redisbroker
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -22,6 +23,14 @@ func TestPublishSubscribe(t *testing.T) {
 		DB:       0,  // use default DB
 	})
 	defer client.Close()
+
+	// clear the database
+	keys, err := client.Keys(context.Background(), "*").Result()
+	require.NoError(t, err)
+	if len(keys) > 0 {
+		err = client.Del(context.Background(), keys...).Err()
+		require.NoError(t, err)
+	}
 
 	broker := New(client)
 	t.Run("first ten concurrent subscribers get all messages, send acks", func(t *testing.T) {
@@ -103,13 +112,13 @@ func TestPublishSubscribe(t *testing.T) {
 		err := TrimStreams(client, 1000, 1)
 		require.NoError(t, err)
 
-		// offsetKeys, err := client.Keys(context.Background(), "offset:*").Result()
-		// require.NoError(t, err)
+		offsetKeys, err := client.Keys(context.Background(), "offset:*").Result()
+		require.NoError(t, err)
 
-		// if len(offsetKeys) > 0 {
-		// 	err = client.Del(context.Background(), offsetKeys...).Err()
-		// 	require.NoError(t, err)
-		// }
+		if len(offsetKeys) > 0 {
+			err = client.Del(context.Background(), offsetKeys...).Err()
+			require.NoError(t, err)
+		}
 
 		sub, err := broker.NewSubscriber(topic)
 		require.NoError(t, err)

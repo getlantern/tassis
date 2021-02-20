@@ -248,7 +248,7 @@ func (d *redisDB) AllRegisteredDevices() ([]*model.Address, error) {
 		if err != nil {
 			return nil, err
 		}
-		userID, err := identity.UserIDFromString(parts[1])
+		userID, err := identity.UserIDFromString(strings.Trim(parts[1], "{}"))
 		if err != nil {
 			return nil, err
 		}

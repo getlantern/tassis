@@ -5,6 +5,7 @@ go 1.15
 // +heroku goVersion go1.15.6
 
 require (
+	github.com/anacrolix/log v0.8.0
 	github.com/getlantern/errors v1.0.1
 	github.com/getlantern/golog v0.0.0-20201105130739-9586b8bde3a9
 	github.com/getlantern/hidden v0.0.0-20201229170000-e66e7f878730 // indirect

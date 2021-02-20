@@ -4,6 +4,8 @@
 package web
 
 import (
+	"context"
+
 	"github.com/go-redis/redis/v8"
 
 	"github.com/getlantern/tassis/broker"
@@ -17,17 +19,30 @@ import (
 )
 
 func TestWebSocketClientWithRealDatabaseAndBroker(t *testing.T) {
-	client := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
+	testWebSocketClient(t, true, func(id int) db.DB {
+		client := redis.NewClient(&redis.Options{
+			Addr:     "localhost:6379",
+			Password: "", // no password set
+			DB:       id,
+		})
 
-	testWebSocketClient(t, true, func() db.DB {
+		// clear the database
+		keys, err := client.Keys(context.Background(), "*").Result()
+		require.NoError(t, err)
+		if len(keys) > 0 {
+			err = client.Del(context.Background(), keys...).Err()
+			require.NoError(t, err)
+		}
+
 		d, err := redisdb.New(client)
 		require.NoError(t, err)
 		return d
-	}, func() broker.Broker {
+	}, func(id int) broker.Broker {
+		client := redis.NewClient(&redis.Options{
+			Addr:     "localhost:6379",
+			Password: "", // no password set
+			DB:       id,
+		})
 		return redisbroker.New(client)
 	})
 }

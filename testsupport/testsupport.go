@@ -16,11 +16,11 @@ import (
 )
 
 const (
-	CheckPreKeysInterval                 = 100 * time.Millisecond
-	slightlyMoreThanCheckPreKeysInterval = 110 * time.Millisecond
+	CheckPreKeysInterval                 = 200 * time.Millisecond
+	slightlyMoreThanCheckPreKeysInterval = 220 * time.Millisecond
 	LowPreKeysLimit                      = 3
 	NumPreKeysToRequest                  = 4
-	ForwardingTimeout                    = 1000 * time.Millisecond
+	ForwardingTimeout                    = 2000 * time.Millisecond
 	MinForwardingRetryInterval           = 200 * time.Millisecond
 	UserTransferInterval                 = 100 * time.Millisecond
 
@@ -360,8 +360,6 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 			To:                        deviceC1Addr,
 			UnidentifiedSenderMessage: []byte("shouldbeforwarded"),
 		}}))
-		// sleep long enough to fail a few times but not get lost yet
-		time.Sleep(ForwardingTimeout / 2)
 
 		// fix presence and make sure 2nd message is received
 		require.NoError(t, presenceRepo.Announce(deviceC1Addr, origHost))

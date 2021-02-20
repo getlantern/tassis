@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d func() db.DB, b func() broker.Broker) {
+func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d func(id int) db.DB, b func(id int) broker.Broker) {
 	listeners := make([]net.Listener, 0)
 	handlers := make([]Handler, 0)
 
@@ -49,19 +49,20 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d func() d
 		require.NoError(t, err)
 		listeners = append(listeners, l)
 
-		database := d()
+		database := d(serverID)
 		addr := l.Addr().String()
 		srvc, err := serviceimpl.New(&serviceimpl.Opts{
-			PublicAddr:           addr,
-			DB:                   database,
-			Broker:               b(),
-			PresenceRepo:         presenceRepo,
-			Forwarder:            webforwarder.New(100),
-			CheckPreKeysInterval: testsupport.CheckPreKeysInterval,
-			LowPreKeysLimit:      testsupport.LowPreKeysLimit,
-			NumPreKeysToRequest:  testsupport.NumPreKeysToRequest,
-			ForwardingTimeout:    testsupport.ForwardingTimeout,
-			UserTransferInterval: testsupport.UserTransferInterval,
+			PublicAddr:                 addr,
+			DB:                         database,
+			Broker:                     b(serverID),
+			PresenceRepo:               presenceRepo,
+			Forwarder:                  webforwarder.New(100),
+			CheckPreKeysInterval:       testsupport.CheckPreKeysInterval,
+			LowPreKeysLimit:            testsupport.LowPreKeysLimit,
+			NumPreKeysToRequest:        testsupport.NumPreKeysToRequest,
+			ForwardingTimeout:          testsupport.ForwardingTimeout,
+			MinForwardingRetryInterval: testsupport.MinForwardingRetryInterval,
+			UserTransferInterval:       testsupport.UserTransferInterval,
 		})
 		require.NoError(t, err)
 

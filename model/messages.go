@@ -74,7 +74,7 @@ func (msg *ForwardedMessage) HasBeenFailingFor() time.Duration {
 	if msg.FirstFailed == 0 {
 		return 0
 	}
-	return time.Duration(time.Now().Unix()-msg.FirstFailed) * time.Second
+	return time.Duration(time.Now().Unix() - msg.FirstFailed)
 }
 
 // DurationSinceLastFailure indicates how long it's been since this message last failed to forward.
@@ -82,7 +82,7 @@ func (msg *ForwardedMessage) DurationSinceLastFailure() time.Duration {
 	if msg.LastFailed == 0 {
 		return 0
 	}
-	return time.Duration(time.Now().Unix()-msg.LastFailed) * time.Second
+	return time.Duration(time.Now().Unix() - msg.LastFailed)
 }
 
 type MessageBuilder struct {

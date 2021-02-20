@@ -2,7 +2,9 @@
 package webclient
 
 import (
+	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"google.golang.org/protobuf/proto"
@@ -36,7 +38,11 @@ func (srvc *websocketService) Connect() (service.ClientConnection, error) {
 // Connect creates a new ServiceConnection using a websocket to the given url.
 // bufferDepth specifies how many messages to buffer in either direction.
 func Connect(url string, bufferDepth int) (service.ClientConnection, error) {
-	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	dialer := websocket.Dialer{
+		Proxy:            http.ProxyFromEnvironment,
+		HandshakeTimeout: 1 * time.Second, // TODO: make this configurable
+	}
+	conn, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
 	}

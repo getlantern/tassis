@@ -151,6 +151,6 @@ message Message {
 // Used internally by tassis for messages that are to be forwarded to a federated tassis
 message ForwardedMessage {
     OutboundMessage message     = 1;  // The message that's being forwarded
-    int64           firstFailed = 2;  // The unix timestamp in seconds for when the message first failed to forward
-    int64           lastFailed  = 3;  // The unix timestamp in seconds for when the message most recently failed to forward
+    int64           firstFailed = 2;  // The unix timestamp in nanoseconds for when the message first failed to forward
+    int64           lastFailed  = 3;  // The unix timestamp in nanoseconds for when the message most recently failed to forward
 }

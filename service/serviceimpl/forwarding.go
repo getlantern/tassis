@@ -28,7 +28,7 @@ func (srvc *Service) startForwarding() error {
 		return err
 	}
 
-	retryPublisher, err := srvc.publisherFor(forwardingTopic)
+	retryPublisher, err := srvc.publisherFor(forwardingRetryTopic)
 	if err != nil {
 		return err
 	}
@@ -45,80 +45,88 @@ func (srvc *Service) forwardMessages(subscriber broker.Subscriber, retryPublishe
 	for i := 0; i < srvc.forwardingParallelism; i++ {
 		go func() {
 			for brokerMsg := range subscriber.Messages() {
-				ack := brokerMsg.Acker()
-				msg := &model.ForwardedMessage{}
-				err := proto.Unmarshal(brokerMsg.Data(), msg)
+				err := srvc.forwardMessage(subscriber, retryPublisher, brokerMsg)
 				if err != nil {
-					log.Errorf("unable to unmarshal ForwardedMessage: %v", err)
-					ack()
-					return
+					log.Error(err)
 				}
-				durationSinceLastFailure := msg.DurationSinceLastFailure()
-				if durationSinceLastFailure > 0 && durationSinceLastFailure < srvc.minForwardingRetryInterval {
-					// delay to avoid tight loop on retries
-					// new messages are processed on a separate set of goroutines, so this won't block them
-					time.Sleep(srvc.minForwardingRetryInterval - durationSinceLastFailure)
-				}
-
-				failMessage := func() {
-					msg.MarkFailed()
-					if msg.HasBeenFailingFor() > srvc.forwardingTimeout {
-						log.Debugf("discarding message that has been failing for longer than %v", srvc.forwardingTimeout)
-						ack()
-					} else {
-						msgBytes, err := proto.Marshal(msg)
-						if err != nil {
-							log.Errorf("unable to marshal ForwardedMessage: %v", err)
-							ack()
-							return
-						}
-						err = retryPublisher.Publish(msgBytes)
-						if err == nil {
-							ack()
-						} else {
-							// this is an unusual case. don't ack so that message is not lost
-							// note - this will lead to the forwarding queue potentially getting quite large
-							// TODO: make sure we don't accidentally retransmit a boatload of messages
-						}
-					}
-				}
-
-				tassisHost, err := srvc.presenceRepo.Find(msg.GetMessage().To)
-				if err != nil {
-					log.Errorf("unable to find tassis host: %v", err)
-					failMessage()
-					return
-				}
-
-				if tassisHost == srvc.publicAddr {
-					// user came back to us, just publish locally
-					topic := topicForAddr(msg.GetMessage().To)
-					publisher, err := srvc.publisherFor(topic)
-					if err != nil {
-						log.Errorf("unable to get publisher: %v", err)
-						failMessage()
-						return
-					}
-					err = publisher.Publish(msg.GetMessage().GetUnidentifiedSenderMessage())
-					if err != nil {
-						log.Errorf("unable to publish: %v", err)
-						failMessage()
-						return
-					}
-					ack()
-					return
-				}
-
-				srvc.forwarder.Forward(msg, tassisHost, func(forwardingErr error) {
-					if forwardingErr != nil {
-						failMessage()
-					} else {
-						ack()
-					}
-				})
 			}
 		}()
 	}
+}
+
+func (srvc *Service) forwardMessage(subscriber broker.Subscriber, retryPublisher broker.Publisher, brokerMsg broker.Message) error {
+	ack := brokerMsg.Acker()
+	msg := &model.ForwardedMessage{}
+	err := proto.Unmarshal(brokerMsg.Data(), msg)
+	if err != nil {
+		ack()
+		return errors.New("unable to unmarshal ForwardedMessage: %v", err)
+	}
+	log.Debug(srvc.minForwardingRetryInterval)
+	if msg.LastFailed != 0 {
+		durationSinceLastFailure := msg.DurationSinceLastFailure()
+		if durationSinceLastFailure < srvc.minForwardingRetryInterval {
+			// delay to avoid tight loop on retries
+			// new messages are processed on a separate set of goroutines, so this won't block them
+			time.Sleep(srvc.minForwardingRetryInterval - durationSinceLastFailure)
+		}
+	}
+
+	failMessage := func() {
+		msg.MarkFailed()
+		if msg.HasBeenFailingFor() > srvc.forwardingTimeout {
+			log.Debugf("discarding message that has been failing for longer than %v", srvc.forwardingTimeout)
+			ack()
+			return
+		}
+		msgBytes, err := proto.Marshal(msg)
+		if err != nil {
+			log.Errorf("unable to marshal ForwardedMessage: %v", err)
+			ack()
+			return
+		}
+		err = retryPublisher.Publish(msgBytes)
+		if err == nil {
+			ack()
+		} else {
+			// this is an unusual case. don't ack so that message is not lost
+			// note - this will lead to the forwarding queue potentially getting quite large
+			// TODO: make sure we don't accidentally retransmit a boatload of messages
+		}
+	}
+
+	tassisHost, err := srvc.presenceRepo.Find(msg.GetMessage().To)
+	if err != nil {
+		failMessage()
+		return errors.New("unable to find tassis host: %v", err)
+	}
+
+	if tassisHost == srvc.publicAddr {
+		// user came back to us, just publish locally
+		topic := topicForAddr(msg.GetMessage().To)
+		publisher, err := srvc.publisherFor(topic)
+		if err != nil {
+			failMessage()
+			return errors.New("unable to get publisher: %v", err)
+		}
+		err = publisher.Publish(msg.GetMessage().GetUnidentifiedSenderMessage())
+		if err != nil {
+			failMessage()
+			return errors.New("unable to publish: %v", err)
+		}
+		ack()
+		return nil
+	}
+
+	srvc.forwarder.Forward(msg, tassisHost, func(forwardingErr error) {
+		if forwardingErr != nil {
+			failMessage()
+		} else {
+			ack()
+		}
+	})
+
+	return nil
 }
 
 func (srvc *Service) startUserTransfers() error {
