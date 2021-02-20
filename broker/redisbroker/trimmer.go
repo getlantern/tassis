@@ -75,7 +75,7 @@ func TrimStreams(client *redis.Client, maxLen int, batchSize int) error {
 
 		p = client.Pipeline()
 		for _, stream := range streams {
-			p.XTrimApprox(ctx, stream, int64(maxLen))
+			p.XTrim(ctx, stream, int64(maxLen))
 		}
 		_, err = p.Exec(ctx)
 		if err != nil {

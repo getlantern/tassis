@@ -1,7 +1,6 @@
 package redisbroker
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -51,7 +50,7 @@ func TestPublishSubscribe(t *testing.T) {
 						}
 
 						i++
-					case <-time.After(250 * time.Millisecond):
+					case <-time.After(1 * time.Second):
 						break items
 					}
 				}
@@ -104,11 +103,13 @@ func TestPublishSubscribe(t *testing.T) {
 		err := TrimStreams(client, 1000, 1)
 		require.NoError(t, err)
 
-		offsetKeys, err := client.Keys(context.Background(), "offset:*").Result()
-		require.NoError(t, err)
+		// offsetKeys, err := client.Keys(context.Background(), "offset:*").Result()
+		// require.NoError(t, err)
 
-		err = client.Del(context.Background(), offsetKeys...).Err()
-		require.NoError(t, err)
+		// if len(offsetKeys) > 0 {
+		// 	err = client.Del(context.Background(), offsetKeys...).Err()
+		// 	require.NoError(t, err)
+		// }
 
 		sub, err := broker.NewSubscriber(topic)
 		require.NoError(t, err)
