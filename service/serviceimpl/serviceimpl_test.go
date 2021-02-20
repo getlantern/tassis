@@ -24,16 +24,17 @@ func TestServiceInMemory(t *testing.T) {
 		database := memdb.New()
 
 		srvc, err := New(&Opts{
-			PublicAddr:           fmt.Sprintf("localhost:%d", serverID),
-			DB:                   database,
-			Broker:               membroker.New(),
-			PresenceRepo:         presenceRepo,
-			Forwarder:            memforwarder.New(services),
-			CheckPreKeysInterval: testsupport.CheckPreKeysInterval,
-			LowPreKeysLimit:      testsupport.LowPreKeysLimit,
-			NumPreKeysToRequest:  testsupport.NumPreKeysToRequest,
-			ForwardingTimeout:    testsupport.ForwardingTimeout,
-			UserTransferInterval: testsupport.UserTransferInterval,
+			PublicAddr:                 fmt.Sprintf("localhost:%d", serverID),
+			DB:                         database,
+			Broker:                     membroker.New(),
+			PresenceRepo:               presenceRepo,
+			Forwarder:                  memforwarder.New(services),
+			CheckPreKeysInterval:       testsupport.CheckPreKeysInterval,
+			LowPreKeysLimit:            testsupport.LowPreKeysLimit,
+			NumPreKeysToRequest:        testsupport.NumPreKeysToRequest,
+			ForwardingTimeout:          testsupport.ForwardingTimeout,
+			MinForwardingRetryInterval: testsupport.MinForwardingRetryInterval,
+			UserTransferInterval:       testsupport.UserTransferInterval,
 		})
 		require.NoError(t, err)
 		services[srvc.publicAddr] = srvc
