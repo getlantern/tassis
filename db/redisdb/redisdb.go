@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/go-redis/redis/v8"
 
@@ -233,6 +234,27 @@ func (d *redisDB) PreKeysRemaining(userID identity.UserID, deviceID uint32) (int
 	}
 	numPreKeys, _ := numPreKeysCmd.Result()
 	return int(numPreKeys), nil
+}
+
+func (d *redisDB) AllRegisteredDevices() ([]*model.Address, error) {
+	deviceKeys, err := d.client.Keys(context.Background(), "device:*").Result()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*model.Address, 0, len(deviceKeys))
+	for _, deviceKey := range deviceKeys {
+		parts := strings.Split(deviceKey, ":")
+		deviceID, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return nil, err
+		}
+		userID, err := identity.UserIDFromString(parts[1])
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, &model.Address{UserID: userID, DeviceID: uint32(deviceID)})
+	}
+	return result, nil
 }
 
 func (d *redisDB) Close() error {

@@ -14,10 +14,10 @@ type repo struct {
 }
 
 func NewRepository() presence.Repository {
-	return repo{m: make(map[string]string, 0)}
+	return &repo{m: make(map[string]string, 0)}
 }
 
-func (r repo) Announce(addr *model.Address, tassisHost string) error {
+func (r *repo) Announce(addr *model.Address, tassisHost string) error {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 
@@ -25,7 +25,7 @@ func (r repo) Announce(addr *model.Address, tassisHost string) error {
 	return nil
 }
 
-func (r repo) Find(addr *model.Address) (string, error) {
+func (r *repo) Find(addr *model.Address) (string, error) {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 
