@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	forwardingTopic = "forwarding"
+	forwardingTopic      = "forwarding"
+	forwardingRetryTopic = "forwardingretry"
 )
 
 func (srvc *Service) startForwarding() error {
@@ -22,11 +23,25 @@ func (srvc *Service) startForwarding() error {
 		return err
 	}
 
-	republisher, err := srvc.publisherFor(forwardingTopic)
+	retrySubscriber, err := srvc.broker.NewSubscriber(forwardingRetryTopic)
 	if err != nil {
 		return err
 	}
 
+	retryPublisher, err := srvc.publisherFor(forwardingTopic)
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < srvc.forwardingParallelism; i++ {
+		go srvc.forwardMessages(subscriber, retryPublisher)
+		go srvc.forwardMessages(retrySubscriber, retryPublisher)
+	}
+
+	return nil
+}
+
+func (srvc *Service) forwardMessages(subscriber broker.Subscriber, retryPublisher broker.Publisher) {
 	for i := 0; i < srvc.forwardingParallelism; i++ {
 		go func() {
 			for brokerMsg := range subscriber.Messages() {
@@ -36,7 +51,13 @@ func (srvc *Service) startForwarding() error {
 				if err != nil {
 					log.Errorf("unable to unmarshal ForwardedMessage: %v", err)
 					ack()
-					continue
+					return
+				}
+				durationSinceLastFailure := msg.DurationSinceLastFailure()
+				if durationSinceLastFailure > 0 && durationSinceLastFailure < srvc.minForwardingRetryInterval {
+					// delay to avoid tight loop on retries
+					// new messages are processed on a separate set of goroutines, so this won't block them
+					time.Sleep(srvc.minForwardingRetryInterval - durationSinceLastFailure)
 				}
 
 				failMessage := func() {
@@ -51,7 +72,7 @@ func (srvc *Service) startForwarding() error {
 							ack()
 							return
 						}
-						err = republisher.Publish(msgBytes)
+						err = retryPublisher.Publish(msgBytes)
 						if err == nil {
 							ack()
 						} else {
@@ -66,7 +87,7 @@ func (srvc *Service) startForwarding() error {
 				if err != nil {
 					log.Errorf("unable to find tassis host: %v", err)
 					failMessage()
-					continue
+					return
 				}
 
 				if tassisHost == srvc.publicAddr {
@@ -76,16 +97,16 @@ func (srvc *Service) startForwarding() error {
 					if err != nil {
 						log.Errorf("unable to get publisher: %v", err)
 						failMessage()
-						continue
+						return
 					}
 					err = publisher.Publish(msg.GetMessage().GetUnidentifiedSenderMessage())
 					if err != nil {
 						log.Errorf("unable to publish: %v", err)
 						failMessage()
-						continue
+						return
 					}
 					ack()
-					continue
+					return
 				}
 
 				srvc.forwarder.Forward(msg, tassisHost, func(forwardingErr error) {
@@ -98,8 +119,6 @@ func (srvc *Service) startForwarding() error {
 			}
 		}()
 	}
-
-	return nil
 }
 
 func (srvc *Service) startUserTransfers() error {

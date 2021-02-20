@@ -52,6 +52,8 @@ type Opts struct {
 	ForwardingParallelism int
 	// If a message has been failing to forward for more than ForwardingTimeout, it is permanently discarded. Defaults to 1 hour.
 	ForwardingTimeout time.Duration
+	// Minimum interval for retrying messages that failed to forward, defaults to ForwardingTimeout / 60.
+	MinForwardingRetryInterval time.Duration
 	// Determines how frequently to check for users who have transferred and send over their messages. Set to 0 or less to disable. Should only be used in a background tassis process.
 	UserTransferInterval time.Duration
 }
@@ -81,6 +83,10 @@ func (opts *Opts) ApplyDefaults() {
 		opts.ForwardingTimeout = 1 * time.Hour
 		log.Debugf("Defaulted ForwardingTimeout to: %v", opts.ForwardingTimeout)
 	}
+	if opts.MinForwardingRetryInterval <= 0 {
+		opts.MinForwardingRetryInterval = opts.ForwardingTimeout / 60
+		log.Debugf("Defaulted MinForwardingRetryInterval to: %v", opts.MinForwardingRetryInterval)
+	}
 	if opts.PresenceRepo == nil {
 		opts.PresenceRepo = mempresence.NewRepository()
 		log.Debug("Defaulted to local in-memory presence repository")
@@ -88,19 +94,20 @@ func (opts *Opts) ApplyDefaults() {
 }
 
 type Service struct {
-	publicAddr            string
-	db                    db.DB
-	broker                broker.Broker
-	presenceRepo          presence.Repository
-	forwarder             *forwarder.Forwarder
-	checkPreKeysInterval  time.Duration
-	lowPreKeysLimit       int
-	numPreKeysToRequest   int
-	forwardingParallelism int
-	forwardingTimeout     time.Duration
-	userTransferInterval  time.Duration
-	publisherCache        *lru.Cache
-	publisherCacheMx      sync.Mutex
+	publicAddr                 string
+	db                         db.DB
+	broker                     broker.Broker
+	presenceRepo               presence.Repository
+	forwarder                  *forwarder.Forwarder
+	checkPreKeysInterval       time.Duration
+	lowPreKeysLimit            int
+	numPreKeysToRequest        int
+	forwardingParallelism      int
+	forwardingTimeout          time.Duration
+	minForwardingRetryInterval time.Duration
+	userTransferInterval       time.Duration
+	publisherCache             *lru.Cache
+	publisherCacheMx           sync.Mutex
 }
 
 func New(opts *Opts) (*Service, error) {
@@ -115,18 +122,19 @@ func New(opts *Opts) (*Service, error) {
 		return nil, err
 	}
 	srvc := &Service{
-		publicAddr:            strings.ToLower(opts.PublicAddr),
-		db:                    opts.DB,
-		broker:                opts.Broker,
-		presenceRepo:          opts.PresenceRepo,
-		forwarder:             opts.Forwarder,
-		publisherCache:        publisherCache,
-		checkPreKeysInterval:  opts.CheckPreKeysInterval,
-		lowPreKeysLimit:       opts.LowPreKeysLimit,
-		numPreKeysToRequest:   opts.NumPreKeysToRequest,
-		forwardingParallelism: opts.ForwardingParallelism,
-		forwardingTimeout:     opts.ForwardingTimeout,
-		userTransferInterval:  opts.UserTransferInterval,
+		publicAddr:                 strings.ToLower(opts.PublicAddr),
+		db:                         opts.DB,
+		broker:                     opts.Broker,
+		presenceRepo:               opts.PresenceRepo,
+		forwarder:                  opts.Forwarder,
+		publisherCache:             publisherCache,
+		checkPreKeysInterval:       opts.CheckPreKeysInterval,
+		lowPreKeysLimit:            opts.LowPreKeysLimit,
+		numPreKeysToRequest:        opts.NumPreKeysToRequest,
+		forwardingParallelism:      opts.ForwardingParallelism,
+		forwardingTimeout:          opts.ForwardingTimeout,
+		minForwardingRetryInterval: opts.MinForwardingRetryInterval,
+		userTransferInterval:       opts.UserTransferInterval,
 	}
 
 	if srvc.forwarder != nil {
