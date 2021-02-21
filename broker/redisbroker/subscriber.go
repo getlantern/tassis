@@ -5,22 +5,20 @@ import (
 	gerrors "errors"
 	"sync"
 
-	"github.com/getlantern/tassis/broker"
 	"github.com/go-redis/redis/v8"
+
+	"github.com/getlantern/tassis/broker"
 )
 
-type subscriberRequest struct {
-	sub    *subscriber
-	offset string
-}
-
 type subscriber struct {
-	b           *redisBroker
-	stream      string
-	messagesOut chan broker.Message
-	messagesIn  chan []*message
-	closeOnce   sync.Once
-	closeCh     chan interface{}
+	b                  *redisBroker
+	stream             string
+	offset             string
+	messagesOut        chan broker.Message
+	messagesIn         chan []*message
+	processedLastBatch chan interface{}
+	closeOnce          sync.Once
+	closeCh            chan interface{}
 }
 
 func (b *redisBroker) NewSubscriber(topicName string) (broker.Subscriber, error) {
@@ -39,11 +37,12 @@ func (b *redisBroker) NewSubscriber(topicName string) (broker.Subscriber, error)
 
 func (b *redisBroker) newSubscriber(stream string, startingOffset string) *subscriber {
 	sub := &subscriber{
-		b:           b,
-		stream:      stream,
-		messagesOut: make(chan broker.Message, 100), // TODO make this tunable
-		messagesIn:  make(chan []*message),
-		closeCh:     make(chan interface{}),
+		b:                  b,
+		stream:             stream,
+		messagesOut:        make(chan broker.Message, 10), // TODO make this tunable
+		messagesIn:         make(chan []*message),
+		processedLastBatch: make(chan interface{}),
+		closeCh:            make(chan interface{}),
 	}
 	go sub.process(startingOffset)
 	return sub
@@ -54,27 +53,15 @@ func (sub *subscriber) process(startingOffset string) {
 
 	offset := startingOffset
 	for {
-		if sub.stream == "topic:{forwarding}" {
-			log.Debug("starting subscribe logic")
-		}
 		sub.b.subscriberRequests <- &subscriberRequest{sub, offset}
-		if sub.stream == "topic:{forwarding}" {
-			log.Debug("requested messages")
-		}
 		msgs := <-sub.messagesIn
-		if sub.stream == "topic:{forwarding}" {
-			log.Debugf("got %d messages", len(msgs))
-		}
 		for _, msg := range msgs {
 			if offsetLessThan(offset, msg.offset) {
-				select {
-				case sub.messagesOut <- msg:
-					offset = msg.offset
-				default:
-					// backloged
-				}
+				sub.messagesOut <- msg
+				offset = msg.offset
 			}
 		}
+		sub.processedLastBatch <- nil
 		select {
 		case <-sub.closeCh:
 			return
@@ -82,6 +69,11 @@ func (sub *subscriber) process(startingOffset string) {
 			// continue
 		}
 	}
+}
+
+func (sub *subscriber) send(msgs []*message) {
+	sub.messagesIn <- msgs
+	<-sub.processedLastBatch
 }
 
 func (sub *subscriber) Messages() <-chan broker.Message {
@@ -93,14 +85,6 @@ func (sub *subscriber) Close() error {
 		close(sub.closeCh)
 	})
 	return nil
-}
-
-type ack struct {
-	b       *redisBroker
-	stream  string
-	offset  string
-	errCh   chan error
-	ackOnce sync.Once
 }
 
 type message struct {
@@ -127,4 +111,17 @@ func (msg *message) Acker() func() error {
 func (a *ack) ack() error {
 	a.b.acks <- a
 	return <-a.errCh
+}
+
+type ack struct {
+	b       *redisBroker
+	stream  string
+	offset  string
+	errCh   chan error
+	ackOnce sync.Once
+}
+
+type subscriberRequest struct {
+	sub    *subscriber
+	offset string
 }

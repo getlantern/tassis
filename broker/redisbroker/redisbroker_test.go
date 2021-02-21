@@ -34,10 +34,12 @@ func TestPublishSubscribe(t *testing.T) {
 
 	broker, err := New(client)
 	require.NoError(t, err)
-	t.Run("first ten concurrent subscribers get all messages, send acks", func(t *testing.T) {
+	t.Run("concurrent subscribers get all messages, send acks", func(t *testing.T) {
 		var wg sync.WaitGroup
 
-		for i := 0; i < 10; i++ {
+		ackers := make([]func() error, 0)
+		var ackersMx sync.Mutex
+		for i := 0; i < 100; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -49,23 +51,24 @@ func TestPublishSubscribe(t *testing.T) {
 				defer sub.Close()
 
 				i := 0
+				var acker func() error
 			items:
 				for {
+
 					select {
 					case msg := <-sub.Messages():
 						if !assert.Equal(t, fmt.Sprintf("msg%d", i), string(msg.Data())) {
 							return
 						}
-						err = msg.Acker()()
-						if !assert.NoError(t, err) {
-							return
-						}
-
+						acker = msg.Acker()
 						i++
-					case <-time.After(5 * time.Second):
+					case <-time.After(1 * time.Second):
 						break items
 					}
 				}
+				ackersMx.Lock()
+				ackers = append(ackers, acker)
+				ackersMx.Unlock()
 				assert.Equal(t, 100, i)
 			}()
 		}
@@ -90,6 +93,17 @@ func TestPublishSubscribe(t *testing.T) {
 			}
 		}()
 
+		wg.Wait()
+
+		wg.Add(len(ackers))
+		for _, a := range ackers {
+			acker := a
+			go func() {
+				defer wg.Done()
+				err := acker()
+				assert.NoError(t, err)
+			}()
+		}
 		wg.Wait()
 	})
 
