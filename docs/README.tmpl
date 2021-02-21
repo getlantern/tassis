@@ -1,0 +1,252 @@
+# tassis Documentation
+<a name="top"></a>
+
+## Table of Contents
+- [Overview](#overview)
+  - [Key Distribution](#key-distribution)
+  - [Message Transport](#message-transport)
+- [WebSockets API](#websockets-api)
+- [Security](#security)
+- [Message Exchange Flow](#message-exchange-flow)
+- [Messages](#messages)
+
+## Overview
+tassis provides back-end facilities for exchanging end-to-end encryptoed (E2EE) messages between messaging clients. It provides two key facilities:
+
+- Key Distribution
+- Message transport
+
+These facilities are access via a [websockets API](#websockets-api)
+
+### Key Distribution
+Encryption is handled by clients using the [Signal protocol](https://github.com/signalapp/libsignal-protocol-java).
+
+tassis implements the "server" role as defined in Signal's [Sesame paper](https://www.signal.org/docs/specifications/sesame/).
+
+With Signal, messages are actually exchanged between devices, with each device pair having its own crypto session. So for example, if user A wants to send a message to user B
+that can be read on all their devices, user A needs to establish independent sessions with all of user B's devices, independently encrypt the message and send the separate ciphertext to each device.
+
+Each user's device is identified by an [Address](#signal.Address).
+
+Signal clients use the [X3DH key agreement protocol](https://www.signal.org/docs/specifications/x3dh/) to establish encrypted session, which requires server-facilitiated exchange of key information.
+
+tassis is ignorant of Signal's encryption algorithms and simply stores the information for use by Signal's client-side encryption logic as opaque data.
+
+There are two ways that a session can be established:
+
+1. When a device wants to send an encrypted message to a user, it initiates one local session per recipient device. In order to do this, it needs to know the key information for the other devices, which it obtains by sending tassis a [RequestPreKeys](#signal.RequestPreKeys) message and getting back one [PreKey](#signal.PreKey) per known device. With this, it sends a session initiation message that contains all the key material that the recipient needs in order to establish a session on its end.
+
+2. When a device receives an encrypted session initiation message from another device, it sets up the encrypted session on its end without needing to retrieve any key material from tassis.
+
+### Message Transport
+tassis facilities the exchange of messages between clients by supporting store-and-forward send and receive of opaque messages between clients. After connecting to tassis, clients can send messages to arbitrary addresses. Connected clients identify their own address upon connecting, at which point they can receive any messages that were sent to them.
+
+#### Message Acknowledgement and Delivery Guarantees
+Once clients have durably received a message, they acknowledge this to tassis, which in turn acknowledges receipt of the message to its broker so that the message won't be delivered in the future.
+
+If acknowledgements are lost, messages may be delivered multiple times, so clients need to take care to deduplicate messages on their own end.
+
+#### Message Retention
+The messaging server enforces limits on how many messages are retained for each device. If devices do not retrieve messages prior to those limits being hit, messages may be lost in transit.
+
+## Websockets API
+The public API uses websockets. Clients open two connections to ws[s]://server/<userID>/<deviceID>, one authenticated connection and one unauthenticated connection. To preserve sender anonymity, they retrieve key material and send messages on the unauthenticated connection. All other operations happen on the authenticated connection.
+
+All messages in the context of a client connection have a unique sequence number that identifies the message (separate sequences for both directions).
+
+For all messages, if an error is encountered while processing the message, the server will respond with an [Error](#signal.Error) whose sequence number is set to the sequence number of the message that led to the error.
+
+For messages that require a response (like [RequestPreKeys](#signal.RequestPreKeys)), if there was no error, the remote end will respond the corresponding response messages (like [PreKey](#signal.PreKey)).
+
+For all other messages, the remote end (both client and server) should respond with an [Ack](#signal.Ack) whose sequence number is set to the sequence number of the message that is being acknowledged.
+
+## External Dependencies
+tassis needs a [database](../db/db.go) for storing key distribution information and a pub/sub [message broker](../broker/broker.go) for exchanging messages between users.
+
+Simple in-memory implementations of both are provided for testing. In production, we'll start with Redis based implementations. If performance of the message transport becomes an issue, we can consider something like  [Apache Pulsar](https://streamnative.io/cloud/hosted).
+
+tassis depends on Redis 6.2+. Currently, 6.2 is still in release candidate status. If tassis runs against an older version of Redis, it won't be able to delete acknowledged messages from the message queues. It will still bound message queues to a maximum length though, so it can be used in this way.
+
+## Security
+
+### Authentication
+tassis supports both authenticated and unauthenticated connections. At the beginning of every connection, the server sends an [AuthChallenge](#signal.AuthChallenge) to the client with a nonce. Clients that wish to remain anonymous can simply ignore the challenge. Clients that wish to authenticate respond with an [AuthResponse](#signal.AuthResponse) containing their Address (UserID and DeviceID), the nonce from the challenge, and a signature over the Address+Nonce. The server then verifies that the nonce matches the expected value for this connection and that the signature is correct based on the sender's public key (which is also their userID). If yes, the user is authenticated. If not, the server returns an error and closes the connection.
+
+### Key Distribution
+In principle, tassis only provides a convenience for key-distribution, and it's encumbent on clients and end-users to verify key material for themselves. The UserID is in fact also the public key corresponding to that UserID (no key rotation allowed for a given UserID), so in practice if users are confident that they're sending a message to the correct UserID, they can be confident that it's being encrypted for reading by the owner of that UserID.
+
+### Transport Security
+
+#### Message Privacy and Integrity
+Because clients use E2EE, tassis does not concern itself with protecting the contents of messages from eavesdropping or tampering
+
+#### Sender Anonymity (Sealed Sender)
+Sealed Sender is a scheme used by Signal for allowing senders to send messages without intermediaries know who sent the message. The original scheme involved the Signal server issuing a certificate attesting to the sender's identity and the sender encrypting that certificate and sending it to the recipient. Because tassis doesn't use phone numbers, it doesn't need to attest to the sender's identity. So here, the sender simply signs its own address information and encrypts that for transmission to the client. Because the address is encrypted just like with Signal, and clients send messages via unauthenticaated connections, tassis doesn't know the address of the sender, only the recipient. Our Java implementation of this can be found [here](https://github.com/getlantern/libsignal-metadata-java).
+
+#### Denial of Service
+Because clients rely on tassis for the actual transport of messages, it is important to guard against various denial of services attacks. In addition to the typical denial of service attacks faced by any web service, tassis guards against the following categories of attack:
+
+##### Message Flooding
+Rate limiting should be used to prevent individual clients from flooding the network, or any particular user, with messages. *this is not yet implemented*
+
+##### Message Stealing
+In order to prevent unauthorized users from stealing messages before they can be received by their legitimate clients, tassis authenticates clients based on UserID to make sure that only authorized clients may read messages on behalf of a specific user.
+
+## Message Exchange Flow
+![Message Exchange Flow](mainflow.png)
+
+<!-- The above sequence diagram is generated at https://sequencediagram.org using the below code:
+
+Message Exchange Flow
+
+==recipient connects and authenticates==
+participant Recipient
+participantgroup #lightblue **tassis**
+participant RecipientServerConn
+participant Database
+participant Broker
+participant SenderServerConn
+end
+participant Sender
+
+Recipient->RecipientServerConn:Connect WebSocket
+RecipientServerConn->Recipient:AuthChallenge
+Recipient->RecipientServerConn:AuthResponse
+RecipientServerConn->Recipient:Ack
+
+==sender connects anonymously==
+Sender->SenderServerConn:Connect WebSocket
+SenderServerConn->Sender:AuthChallenge
+Sender->Sender:ignore auth challenge
+
+==recipient registers key material==
+Recipient->RecipientServerConn:Registration
+RecipientServerConn->Database:Register()
+RecipientServerConn->Recipient:Ack
+
+==sender requests key material to init session==
+Sender->SenderServerConn:RequestPreKeys
+SenderServerConn->Database:RequestPreKeys()
+SenderServerConn->Sender:PreKeys (one per device)
+end
+
+==message exchange==
+Sender->SenderServerConn:OutboundMessage
+SenderServerConn->Broker:Publish()
+SenderServerConn->Sender:Ack
+Broker->RecipientServerConn:sealed sender message
+RecipientServerConn->Recipient:InboundMessage
+Recipient->RecipientServerConn:Ack
+RecipientServerConn->Broker:Ack
+end
+
+==keep oneTimePreKeys filled==
+loop periodically check if preKeys low
+RecipientServerConn->Database:PreKeysRemaining()
+RecipientServerConn->Recipient:PreKeysLow
+RecipientServerConn->Database:Register()
+end
+
+-->
+
+## Messages
+{{range .Files}}
+{{$file_name := .Name}}- [{{.Name}}](#{{.Name}})
+  {{- if .Messages }}
+  {{range .Messages}}  - [{{.LongName}}](#{{.FullName}})
+  {{end}}
+  {{- end -}}
+  {{- if .Enums }}
+  {{range .Enums}}  - [{{.LongName}}](#{{.FullName}})
+  {{end}}
+  {{- end -}}
+  {{- if .Extensions }}
+  {{range .Extensions}}  - [File-level Extensions](#{{$file_name}}-extensions)
+  {{end}}
+  {{- end -}}
+  {{- if .Services }}
+  {{range .Services}}  - [{{.Name}}](#{{.FullName}})
+  {{end}}
+  {{- end -}}
+{{end}}
+- [Scalar Value Types](#scalar-value-types)
+
+{{range .Files}}
+{{$file_name := .Name}}
+<a name="{{.Name}}"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+### {{.Name}}
+{{.Description}}
+
+{{range .Messages}}
+<a name="{{.FullName}}"></a>
+
+#### {{.LongName}}
+{{.Description}}
+
+{{if .HasFields}}
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+{{range .Fields -}}
+  | {{.Name}} | [{{.LongType}}](#{{.FullType}}) | {{.Label}} | {{if (index .Options "deprecated"|default false)}}**Deprecated.** {{end}}{{nobr .Description}}{{if .DefaultValue}} Default: {{.DefaultValue}}{{end}} |
+{{end}}
+{{end}}
+
+{{if .HasExtensions}}
+| Extension | Type | Base | Number | Description |
+| --------- | ---- | ---- | ------ | ----------- |
+{{range .Extensions -}}
+  | {{.Name}} | {{.LongType}} | {{.ContainingLongType}} | {{.Number}} | {{nobr .Description}}{{if .DefaultValue}} Default: {{.DefaultValue}}{{end}} |
+{{end}}
+{{end}}
+
+{{end}} <!-- end messages -->
+
+{{range .Enums}}
+<a name="{{.FullName}}"></a>
+
+#### {{.LongName}}
+{{.Description}}
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+{{range .Values -}}
+  | {{.Name}} | {{.Number}} | {{nobr .Description}} |
+{{end}}
+
+{{end}} <!-- end enums -->
+
+{{if .HasExtensions}}
+<a name="{{$file_name}}-extensions"></a>
+
+#### File-level Extensions
+| Extension | Type | Base | Number | Description |
+| --------- | ---- | ---- | ------ | ----------- |
+{{range .Extensions -}}
+  | {{.Name}} | {{.LongType}} | {{.ContainingLongType}} | {{.Number}} | {{nobr .Description}}{{if .DefaultValue}} Default: `{{.DefaultValue}}`{{end}} |
+{{end}}
+{{end}} <!-- end HasExtensions -->
+
+{{range .Services}}
+<a name="{{.FullName}}"></a>
+
+#### {{.Name}}
+{{.Description}}
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+{{range .Methods -}}
+  | {{.Name}} | [{{.RequestLongType}}](#{{.RequestFullType}}){{if .RequestStreaming}} stream{{end}} | [{{.ResponseLongType}}](#{{.ResponseFullType}}){{if .ResponseStreaming}} stream{{end}} | {{nobr .Description}} |
+{{end}}
+{{end}} <!-- end services -->
+
+{{end}}
+
+### Scalar Value Types
+
+| .proto Type | Notes | C++ | Java | Python | Go | C# | PHP | Ruby |
+| ----------- | ----- | --- | ---- | ------ | -- | -- | --- | ---- |
+{{range .Scalars -}}
+  | <a name="{{.ProtoType}}" /> {{.ProtoType}} | {{.Notes}} | {{.CppType}} | {{.JavaType}} | {{.PythonType}} | {{.GoType}} | {{.CSharp}} | {{.PhpType}} | {{.RubyType}} |
+{{end}}
