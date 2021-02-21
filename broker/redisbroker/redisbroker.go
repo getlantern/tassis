@@ -93,8 +93,12 @@ func New(client *redis.Client) (broker.Broker, error) {
 
 func (b *redisBroker) handleSubscribers() {
 	requestsByStream := make(map[string][]*subscriberRequest)
-	for req := range b.subscriberRequests {
-		requestsByStream[req.sub.stream] = append(requestsByStream[req.sub.stream], req)
+	for {
+		if len(requestsByStream) == 0 {
+			// wait for a new request
+			req := <-b.subscriberRequests
+			requestsByStream[req.sub.stream] = append(requestsByStream[req.sub.stream], req)
+		}
 	coalesce:
 		for {
 			select {
@@ -137,9 +141,9 @@ func (b *redisBroker) handleSubscribers() {
 		}()
 
 		streams, err := b.client.XRead(ctx, &redis.XReadArgs{
-			Block:   15 * time.Second,
+			Block:   250 * time.Millisecond, // TODO: make this tunable
 			Streams: streamsWithOffsets,
-			Count:   1000,
+			Count:   10000, // TODO: make this tunable
 		}).Result()
 		close(done)
 
@@ -205,9 +209,12 @@ func (b *redisBroker) handleAcks() {
 					highestOffset)
 			}
 		}
+
 		_, err := p.Exec(ctx)
-		if err != nil {
-			log.Errorf("unable to record acks to Redis: %v", err)
+		for _, acks := range acksByStream {
+			for _, a := range acks {
+				a.errCh <- err
+			}
 		}
 	}
 }

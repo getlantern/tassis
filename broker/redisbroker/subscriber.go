@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/getlantern/tassis/broker"
-	"github.com/getlantern/tassis/model"
 	"github.com/go-redis/redis/v8"
 )
 
@@ -88,9 +87,11 @@ func (sub *subscriber) Close() error {
 }
 
 type ack struct {
-	b      *redisBroker
-	stream string
-	offset string
+	b       *redisBroker
+	stream  string
+	offset  string
+	errCh   chan error
+	ackOnce sync.Once
 }
 
 type message struct {
@@ -109,15 +110,12 @@ func (msg *message) Acker() func() error {
 		b:      msg.b,
 		stream: msg.sub.stream,
 		offset: msg.offset,
+		errCh:  make(chan error),
 	}
 	return a.ack
 }
 
 func (a *ack) ack() error {
-	select {
-	case a.b.acks <- a:
-		return nil
-	default:
-		return model.ErrUnableToACK
-	}
+	a.b.acks <- a
+	return <-a.errCh
 }
