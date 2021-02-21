@@ -62,7 +62,6 @@ func (srvc *Service) forwardMessage(subscriber broker.Subscriber, retryPublisher
 		ack()
 		return errors.New("unable to unmarshal ForwardedMessage: %v", err)
 	}
-	log.Debug(srvc.minForwardingRetryInterval)
 	if msg.LastFailed != 0 {
 		durationSinceLastFailure := msg.DurationSinceLastFailure()
 		if durationSinceLastFailure < srvc.minForwardingRetryInterval {
@@ -75,7 +74,7 @@ func (srvc *Service) forwardMessage(subscriber broker.Subscriber, retryPublisher
 	failMessage := func() {
 		msg.MarkFailed()
 		if msg.HasBeenFailingFor() > srvc.forwardingTimeout {
-			log.Debugf("discarding message that has been failing for longer than %v", srvc.forwardingTimeout)
+			// discard message that's been failing for too long
 			ack()
 			return
 		}
@@ -120,7 +119,6 @@ func (srvc *Service) forwardMessage(subscriber broker.Subscriber, retryPublisher
 
 	srvc.forwarder.Forward(msg, tassisHost, func(forwardingErr error) {
 		if forwardingErr != nil {
-			log.Debug(forwardingErr)
 			failMessage()
 		} else {
 			ack()
@@ -193,7 +191,7 @@ func (srvc *Service) transferDeviceMessages(subscriber broker.Subscriber, addr *
 				return errors.New("unable to publish message for transfer: %v", err)
 			}
 			brokerMsg.Acker()()
-		case <-time.After(srvc.userTransferInterval / 100):
+		case <-time.After(srvc.userTransferInterval / 10): // TODO: make this tunable
 			// done
 			return nil
 		}

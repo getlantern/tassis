@@ -65,7 +65,7 @@ func TypedError(err error) *Error {
 
 // MarkFailed marks this message as failed (couldn't be forwarded)
 func (msg *ForwardedMessage) MarkFailed() {
-	now := time.Now().Unix()
+	now := time.Now().UnixNano()
 	msg.LastFailed = now
 	if msg.FirstFailed == 0 {
 		msg.FirstFailed = now
@@ -78,7 +78,7 @@ func (msg *ForwardedMessage) HasBeenFailingFor() time.Duration {
 	if msg.FirstFailed == 0 {
 		return 0
 	}
-	return time.Duration(time.Now().Unix() - msg.FirstFailed)
+	return time.Duration(time.Now().UnixNano() - msg.FirstFailed)
 }
 
 // DurationSinceLastFailure indicates how long it's been since this message last failed to forward.
@@ -86,7 +86,7 @@ func (msg *ForwardedMessage) DurationSinceLastFailure() time.Duration {
 	if msg.LastFailed == 0 {
 		return 0
 	}
-	return time.Duration(time.Now().Unix() - msg.LastFailed)
+	return time.Duration(time.Now().UnixNano() - msg.LastFailed)
 }
 
 type MessageBuilder struct {

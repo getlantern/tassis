@@ -54,8 +54,17 @@ func (sub *subscriber) process(startingOffset string) {
 
 	offset := startingOffset
 	for {
+		if sub.stream == "topic:{forwarding}" {
+			log.Debug("starting subscribe logic")
+		}
 		sub.b.subscriberRequests <- &subscriberRequest{sub, offset}
+		if sub.stream == "topic:{forwarding}" {
+			log.Debug("requested messages")
+		}
 		msgs := <-sub.messagesIn
+		if sub.stream == "topic:{forwarding}" {
+			log.Debugf("got %d messages", len(msgs))
+		}
 		for _, msg := range msgs {
 			if offsetLessThan(offset, msg.offset) {
 				select {

@@ -170,9 +170,9 @@ func (b *redisBroker) handleSubscribers() {
 				}
 				req.sub.messagesIn <- msgs
 			}
+			// since we got something for this stream, delete its subscribers
+			delete(requestsByStream, stream.Stream)
 		}
-
-		requestsByStream = make(map[string][]*subscriberRequest)
 	}
 }
 
@@ -195,13 +195,13 @@ func (b *redisBroker) handleAcks() {
 		ctx := context.Background()
 		p := b.client.Pipeline()
 		for stream, acks := range acksByStream {
-			highestOffset := minOffset
+			highestOffset := emptyOffset
 			for _, a := range acks {
-				if offsetLessThan(highestOffset, a.offset) {
+				if highestOffset == emptyOffset || offsetLessThan(highestOffset, a.offset) {
 					highestOffset = a.offset
 				}
 			}
-			if highestOffset != minOffset {
+			if highestOffset != emptyOffset {
 				offsetKey := offsetName(stream)
 				p.EvalSha(ctx,
 					b.ackScriptSHA,

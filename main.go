@@ -125,7 +125,10 @@ func main() {
 
 	client := redis.NewClient(redisOpts)
 
-	b := redisbroker.New(client)
+	b, err := redisbroker.New(client)
+	if err != nil {
+		log.Fatalf("unable to start redisbroker: %v", err)
+	}
 	d, err := redisdb.New(client)
 	if err != nil {
 		log.Fatalf("unable to start redisdb: %v", err)

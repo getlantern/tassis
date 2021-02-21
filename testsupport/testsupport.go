@@ -20,7 +20,7 @@ const (
 	slightlyMoreThanCheckPreKeysInterval = 220 * time.Millisecond
 	LowPreKeysLimit                      = 3
 	NumPreKeysToRequest                  = 4
-	ForwardingTimeout                    = 2000 * time.Millisecond
+	ForwardingTimeout                    = 1000 * time.Millisecond
 	MinForwardingRetryInterval           = 200 * time.Millisecond
 	UserTransferInterval                 = 100 * time.Millisecond
 
