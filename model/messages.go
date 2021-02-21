@@ -34,6 +34,10 @@ var (
 	ErrUnableToOpenSubscriber = &Error{
 		Name: "unable_to_open_subscriber",
 	}
+
+	ErrUnableToACK = &Error{
+		Name: "unable_to_ack",
+	}
 )
 
 func (err *Error) Error() string {

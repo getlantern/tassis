@@ -124,7 +124,7 @@ func (d *redisDB) Register(userID identity.UserID, deviceID uint32, registration
 		[]string{deviceKey, userDevicesKey, oneTimePreKeysKey},
 		registration.RegistrationID,
 		string(registration.SignedPreKey),
-		deviceID).Err()
+		deviceID)
 	oneTimePreKeys := make([]interface{}, 0, len(registration.OneTimePreKeys))
 	for _, oneTimePreKey := range registration.OneTimePreKeys {
 		oneTimePreKeys = append(oneTimePreKeys, oneTimePreKey)

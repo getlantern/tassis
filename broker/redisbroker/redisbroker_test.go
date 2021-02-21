@@ -32,11 +32,12 @@ func TestPublishSubscribe(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	broker := New(client)
+	broker, err := New(client)
+	require.NoError(t, err)
 	t.Run("first ten concurrent subscribers get all messages, send acks", func(t *testing.T) {
 		var wg sync.WaitGroup
 
-		for i := 0; i < 10; i++ {
+		for i := 0; i < 2; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -52,14 +53,16 @@ func TestPublishSubscribe(t *testing.T) {
 				for {
 					select {
 					case msg := <-sub.Messages():
-						require.Equal(t, fmt.Sprintf("msg%d", i), string(msg.Data()))
+						if !assert.Equal(t, fmt.Sprintf("msg%d", i), string(msg.Data())) {
+							return
+						}
 						err = msg.Acker()()
 						if !assert.NoError(t, err) {
 							return
 						}
 
 						i++
-					case <-time.After(1 * time.Second):
+					case <-time.After(5 * time.Second):
 						break items
 					}
 				}

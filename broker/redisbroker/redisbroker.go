@@ -19,13 +19,12 @@ package redisbroker
 
 import (
 	"context"
-	"errors"
+	gerrors "errors"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
+	"github.com/getlantern/errors"
 	"github.com/getlantern/golog"
 	"github.com/getlantern/tassis/broker"
 
@@ -33,7 +32,34 @@ import (
 )
 
 const (
-	minOffset = "0"
+	emptyOffset = ""
+	minOffset   = "0"
+
+	ackScript = `
+local offsetKey = KEYS[1]
+local newOffset = ARGV[1]
+
+local oldOffset = redis.call("get", offsetKey)
+if oldOffset then
+	local newOffsetParts = {}
+	for str in string.gmatch(newOffset, "[^-]+") do
+		table.insert(newOffsetParts, str)
+	end
+	local oldOffsetParts = {}
+	for str in string.gmatch(oldOffset, "[^-]+") do
+		table.insert(oldOffsetParts, str)
+	end
+	if newOffsetParts[1] > oldOffsetParts[1] or (newOffsetParts[1] == oldOffsetParts[1] and newOffsetParts[2] > oldOffsetParts[2]) then
+		redis.call("set", offsetKey, newOffset)
+		return 1
+	end
+else
+	redis.call("set", offsetKey, newOffset)
+	return 1
+end
+
+return 0
+`
 )
 
 var (
@@ -41,176 +67,149 @@ var (
 )
 
 type redisBroker struct {
-	client            *redis.Client
-	subscriberAdded   chan *subscriber
-	subscriberRemoved chan *subscriber
-	nextSubscriberID  int64
+	client             *redis.Client
+	subscriberRequests chan *subscriberRequest
+	acks               chan *ack
+	ackScriptSHA       string
 }
 
 // New constructs a new Redis-backed Broker that connects with the given client.
-func New(client *redis.Client) broker.Broker {
-	b := &redisBroker{
-		client:            client,
-		subscriberAdded:   make(chan *subscriber, 100),
-		subscriberRemoved: make(chan *subscriber, 100),
-	}
-	go b.handleSubscriptions()
-	return b
-}
-
-func (b *redisBroker) handleSubscriptions() {
-	subscribers := make(map[string]map[int64]*subscriber)
-	var streamNames []string
-	var streamOffsets []string
-	subscriberWasAdded := false
-
-	addSubscriber := func(newSubscriber *subscriber) {
-		subscribersForStream, found := subscribers[newSubscriber.stream]
-		if !found {
-			subscribersForStream = make(map[int64]*subscriber, 1)
-			subscribers[newSubscriber.stream] = subscribersForStream
-		}
-		subscribersForStream[newSubscriber.id] = newSubscriber
-		subscriberWasAdded = true
-	}
-
-	for {
-		select {
-		case newSubscriber := <-b.subscriberAdded:
-			addSubscriber(newSubscriber)
-		case removedSubscriber := <-b.subscriberRemoved:
-			subscribersForStream, found := subscribers[removedSubscriber.stream]
-			if found {
-				log.Debug(len(subscribersForStream))
-				delete(subscribersForStream, removedSubscriber.id)
-				if len(subscribersForStream) == 0 {
-					delete(subscribers, removedSubscriber.stream)
-				}
-				log.Debug(len(subscribersForStream))
-				close(removedSubscriber.messages)
-			}
-		default:
-			if len(subscribers) == 0 {
-				// wait for first subscriber
-				newSubscriber := <-b.subscriberAdded
-				addSubscriber(newSubscriber)
-			}
-
-			if subscriberWasAdded {
-				streamNames = make([]string, 0, 2*len(subscribers))
-				streamOffsets = make([]string, 0, len(subscribers))
-				for stream, subscriberForStream := range subscribers {
-					streamNames = append(streamNames, stream)
-					// find the lowest offset needed by one of the applicable subscribers
-					highOffset := minOffset
-					for _, sub := range subscriberForStream {
-						if highOffset == minOffset || idLessThan(sub.highOffset, highOffset) {
-							highOffset = sub.highOffset
-						}
-					}
-					streamOffsets = append(streamOffsets, highOffset)
-				}
-				subscriberWasAdded = false
-			}
-			streamsWithOffsets := append(streamNames, streamOffsets...)
-			var _addedSubscriber atomic.Value
-			ctx, cancel := context.WithCancel(context.Background())
-
-			done := make(chan interface{})
-			// cancel blocked xread on added subscription
-			go func() {
-				select {
-				case newSubscriber := <-b.subscriberAdded:
-					_addedSubscriber.Store(newSubscriber)
-				case <-done:
-					return
-				}
-				cancel()
-			}()
-
-			streams, err := b.client.XRead(ctx, &redis.XReadArgs{
-				Block:   15 * time.Second,
-				Streams: streamsWithOffsets,
-				Count:   1000,
-			}).Result()
-			close(done)
-
-			addedSubscriber := _addedSubscriber.Load()
-			if addedSubscriber != nil {
-				// subscriber was addded while we were processing xread, add it now
-				addSubscriber(addedSubscriber.(*subscriber))
-			}
-
-			if err != nil {
-				if !errors.Is(err, context.Canceled) && !errors.Is(err, redis.Nil) {
-					// unexpected error, log and wait a little before reconnecting
-					log.Error(err)
-					time.Sleep(2 * time.Second)
-				}
-				continue
-			}
-
-			for idx, stream := range streams {
-				subscribersForStream := subscribers[stream.Stream]
-				highOffset := minOffset
-				for _, sub := range subscribersForStream {
-					for _, msg := range stream.Messages {
-						mmsg := &message{
-							b:    b,
-							id:   msg.ID,
-							sub:  sub,
-							data: []byte(msg.Values["data"].(string)),
-						}
-						sub.highOffsetMx.Lock()
-						log.Debugf("%v subscriber offset %v msg id %v", sub.stream, sub.highOffset, msg.ID)
-						shouldPublishMessage := highOffset == minOffset || idLessThan(sub.highOffset, msg.ID)
-						if shouldPublishMessage {
-							log.Debug("sending")
-							select {
-							case sub.messages <- mmsg:
-								log.Debug("sent")
-								sub.highOffset = msg.ID
-							default:
-								log.Debug("backlogged")
-								// subscriber back-logged, discard message
-							}
-						}
-						sub.highOffsetMx.Unlock()
-					}
-
-					sub.highOffsetMx.Lock()
-					if idLessThan(sub.highOffset, highOffset) {
-						highOffset = sub.highOffset
-					}
-					sub.highOffsetMx.Unlock()
-				}
-
-				// update offset on stream for next read
-				streamOffsets[idx] = highOffset
-			}
-		}
-	}
-}
-
-func (b *redisBroker) NewSubscriber(topicName string) (broker.Subscriber, error) {
-	stream := streamName(topicName)
-	offset, err := b.client.Get(context.Background(), offsetName(stream)).Result()
+func New(client *redis.Client) (broker.Broker, error) {
+	ackScriptSHA, err := client.ScriptLoad(context.Background(), ackScript).Result()
 	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			offset = minOffset
-		} else {
-			return nil, err
+		return nil, errors.New("unable to load ackScript: %v", err)
+	}
+
+	b := &redisBroker{
+		client:             client,
+		subscriberRequests: make(chan *subscriberRequest, 10000), // TODO: make this tunable
+		acks:               make(chan *ack, 10000),               // TODO: make this tunable
+		ackScriptSHA:       ackScriptSHA,
+	}
+	go b.handleSubscribers()
+	go b.handleAcks()
+	return b, nil
+}
+
+func (b *redisBroker) handleSubscribers() {
+	requestsByStream := make(map[string][]*subscriberRequest)
+	for req := range b.subscriberRequests {
+		requestsByStream[req.sub.stream] = append(requestsByStream[req.sub.stream], req)
+	coalesce:
+		for {
+			select {
+			case additionalReq := <-b.subscriberRequests:
+				requestsByStream[additionalReq.sub.stream] = append(requestsByStream[additionalReq.sub.stream], additionalReq)
+			default:
+				// no more pending requests
+				break coalesce
+			}
+		}
+
+		streamsWithOffsets := make([]string, 0, len(requestsByStream)*2)
+		offsets := make([]string, 0, len(requestsByStream))
+		for stream, requestsForStream := range requestsByStream {
+			streamsWithOffsets = append(streamsWithOffsets, stream)
+			lowestOffset := emptyOffset
+			for _, req := range requestsForStream {
+				if lowestOffset == emptyOffset || offsetLessThan(req.offset, lowestOffset) {
+					lowestOffset = req.offset
+				}
+			}
+			offsets = append(offsets, lowestOffset)
+		}
+
+		// add offsets to streams for full list of Redis arguments
+		streamsWithOffsets = append(streamsWithOffsets, offsets...)
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		done := make(chan interface{})
+		// cancel blocked xread on added subscription
+		go func() {
+			select {
+			case carryoverRequest := <-b.subscriberRequests:
+				cancel()
+				b.subscriberRequests <- carryoverRequest
+			case <-done:
+				return
+			}
+		}()
+
+		streams, err := b.client.XRead(ctx, &redis.XReadArgs{
+			Block:   15 * time.Second,
+			Streams: streamsWithOffsets,
+			Count:   1000,
+		}).Result()
+		close(done)
+
+		if err != nil {
+			if !gerrors.Is(err, context.Canceled) && !gerrors.Is(err, redis.Nil) {
+				// unexpected error, log and wait a little before reconnecting
+				log.Error(err)
+				time.Sleep(2 * time.Second)
+			}
+			continue
+		}
+
+		for _, stream := range streams {
+			requestsForStream := requestsByStream[stream.Stream]
+			for _, req := range requestsForStream {
+				msgs := make([]*message, 0, len(stream.Messages))
+				for _, msg := range stream.Messages {
+					msgs = append(msgs, &message{
+						b:      b,
+						offset: msg.ID,
+						sub:    req.sub,
+						data:   []byte(msg.Values["data"].(string)),
+					})
+				}
+				req.sub.messagesIn <- msgs
+			}
+		}
+
+		requestsByStream = make(map[string][]*subscriberRequest)
+	}
+}
+
+func (b *redisBroker) handleAcks() {
+	for a := range b.acks {
+		acksByStream := map[string][]*ack{
+			a.stream: {a},
+		}
+		// gather additional pending acks
+	coalesce:
+		for {
+			select {
+			case aa := <-b.acks:
+				acksByStream[aa.stream] = append(acksByStream[aa.stream], aa)
+			default:
+				break coalesce
+			}
+		}
+
+		ctx := context.Background()
+		p := b.client.Pipeline()
+		for stream, acks := range acksByStream {
+			highestOffset := minOffset
+			for _, a := range acks {
+				if offsetLessThan(highestOffset, a.offset) {
+					highestOffset = a.offset
+				}
+			}
+			if highestOffset != minOffset {
+				offsetKey := offsetName(stream)
+				p.EvalSha(ctx,
+					b.ackScriptSHA,
+					[]string{offsetKey},
+					highestOffset)
+			}
+		}
+		_, err := p.Exec(ctx)
+		if err != nil {
+			log.Errorf("unable to record acks to Redis: %v", err)
 		}
 	}
-	sub := &subscriber{
-		id:         atomic.AddInt64(&b.nextSubscriberID, 1),
-		b:          b,
-		stream:     stream,
-		highOffset: offset,
-		messages:   make(chan broker.Message, 100),
-	}
-	b.subscriberAdded <- sub
-	return sub, nil
 }
 
 func (b *redisBroker) NewPublisher(topicName string) (broker.Publisher, error) {
@@ -218,63 +217,6 @@ func (b *redisBroker) NewPublisher(topicName string) (broker.Publisher, error) {
 		b:      b,
 		stream: streamName(topicName),
 	}, nil
-}
-
-type message struct {
-	b    *redisBroker
-	sub  *subscriber
-	id   string
-	data []byte
-}
-
-func (msg *message) Data() []byte {
-	return msg.data
-}
-
-func (msg *message) Acker() func() error {
-	a := &acker{
-		b:   msg.b,
-		sub: msg.sub,
-		id:  msg.id,
-	}
-	return a.ack
-}
-
-type acker struct {
-	b   *redisBroker
-	sub *subscriber
-	id  string
-}
-
-func (a *acker) ack() error {
-	a.sub.highOffsetMx.Lock()
-	shouldAck := a.id >= a.sub.highOffset
-	a.sub.highOffsetMx.Unlock()
-	if shouldAck {
-		return a.b.client.Set(context.Background(), offsetName(a.sub.stream), a.id, 0).Err()
-	}
-	return nil
-}
-
-type subscriber struct {
-	id           int64
-	b            *redisBroker
-	stream       string
-	messages     chan broker.Message
-	highOffset   string
-	highOffsetMx sync.Mutex
-	closeOnce    sync.Once
-}
-
-func (sub *subscriber) Messages() <-chan broker.Message {
-	return sub.messages
-}
-
-func (sub *subscriber) Close() error {
-	sub.closeOnce.Do(func() {
-		sub.b.subscriberRemoved <- sub
-	})
-	return nil
 }
 
 type publisher struct {
@@ -304,7 +246,7 @@ func offsetName(stream string) string {
 	return "offset:" + stream
 }
 
-func idLessThan(a, b string) bool {
+func offsetLessThan(a, b string) bool {
 	aParts := strings.Split(a, "-")
 	bParts := strings.Split(b, "-")
 	if aParts[0] < bParts[0] {
