@@ -120,6 +120,7 @@ func (srvc *Service) forwardMessage(subscriber broker.Subscriber, retryPublisher
 
 	srvc.forwarder.Forward(msg, tassisHost, func(forwardingErr error) {
 		if forwardingErr != nil {
+			log.Debug(forwardingErr)
 			failMessage()
 		} else {
 			ack()
