@@ -41,12 +41,12 @@ func TestSmokeTest(t *testing.T) {
 	keyPair, err := identity.GenerateKeyPair()
 	require.NoError(t, err)
 
-	userID := keyPair.Public.UserID()
-	deviceID := uint32(0)
+	identityKey := keyPair.Public
+	deviceId := []byte{2}
 
 	address := &model.Address{
-		UserID:   userID,
-		DeviceID: deviceID,
+		IdentityKey: identityKey,
+		DeviceId:    deviceId,
 	}
 
 	var mb model.MessageBuilder
@@ -77,8 +77,7 @@ func TestSmokeTest(t *testing.T) {
 		register := mb.Build(
 			&model.Message_Register{
 				Register: &model.Register{
-					RegistrationID: 0,
-					SignedPreKey:   []byte("spk"),
+					SignedPreKey: []byte("spk"),
 				},
 			})
 		for i := 0; i < 100; i++ {

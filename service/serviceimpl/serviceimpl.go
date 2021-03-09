@@ -17,6 +17,7 @@ import (
 
 	"github.com/getlantern/tassis/broker"
 	"github.com/getlantern/tassis/db"
+	"github.com/getlantern/tassis/encoding"
 	"github.com/getlantern/tassis/forwarder"
 	"github.com/getlantern/tassis/identity"
 	"github.com/getlantern/tassis/model"
@@ -157,8 +158,8 @@ func New(opts *Opts) (*Service, error) {
 
 type clientConnection struct {
 	authNonce        []byte
-	userID           atomic.Value
-	deviceID         atomic.Value
+	identityKey      atomic.Value
+	deviceId         atomic.Value
 	srvc             *Service
 	mb               *model.MessageBuilder
 	unackedMessages  map[uint32]func() error
@@ -207,24 +208,24 @@ func (srvc *Service) Connect() (service.ClientConnection, error) {
 	return conn, nil
 }
 
-func (conn *clientConnection) getUserID() []byte {
-	userID := conn.userID.Load()
-	if userID == nil {
+func (conn *clientConnection) getIdentityKey() []byte {
+	identityKey := conn.identityKey.Load()
+	if identityKey == nil {
 		return nil
 	}
-	return userID.([]byte)
+	return identityKey.([]byte)
 }
 
-func (conn *clientConnection) getDeviceID() uint32 {
-	deviceID := conn.deviceID.Load()
-	if deviceID == nil {
-		return 0
+func (conn *clientConnection) getDeviceId() []byte {
+	deviceId := conn.deviceId.Load()
+	if deviceId == nil {
+		return nil
 	}
-	return deviceID.(uint32)
+	return deviceId.([]byte)
 }
 
 func (conn *clientConnection) isAuthenticated() bool {
-	return len(conn.getUserID()) != 0
+	return len(conn.getIdentityKey()) != 0
 }
 
 func (conn *clientConnection) Out() chan<- *model.Message {
@@ -265,7 +266,7 @@ func (conn *clientConnection) Close() {
 
 func (conn *clientConnection) warnPreKeysLowIfNecessary() {
 	for {
-		numPreKeys, err := conn.srvc.db.PreKeysRemaining(conn.getUserID(), conn.getDeviceID())
+		numPreKeys, err := conn.srvc.db.PreKeysRemaining(conn.getIdentityKey(), conn.getDeviceId())
 		if err == nil && numPreKeys < conn.srvc.lowPreKeysLimit {
 			conn.send(conn.mb.Build(&model.Message_PreKeysLow{&model.PreKeysLow{KeysRequested: uint32(conn.srvc.numPreKeysToRequest)}}))
 		}
@@ -280,7 +281,7 @@ func (conn *clientConnection) warnPreKeysLowIfNecessary() {
 }
 
 func (conn *clientConnection) startHandlingInbound() error {
-	subscriber, err := conn.srvc.broker.NewSubscriber(topicFor(conn.getUserID(), conn.getDeviceID()))
+	subscriber, err := conn.srvc.broker.NewSubscriber(topicFor(conn.getIdentityKey(), conn.getDeviceId()))
 	if err != nil {
 		return model.ErrUnableToOpenSubscriber.WithError(err)
 	}
@@ -376,15 +377,15 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 
 	// verify signature
 	address := login.Address
-	publicKey := identity.UserID(address.UserID).PublicKey()
+	publicKey := identity.PublicKey(address.IdentityKey)
 	if !publicKey.Verify(authResponse.Login, authResponse.Signature) {
 		conn.error(msg, model.ErrUnauthorized)
 		conn.Close()
 		return
 	}
 
-	conn.userID.Store(address.UserID)
-	conn.deviceID.Store(address.DeviceID)
+	conn.identityKey.Store(address.IdentityKey)
+	conn.deviceId.Store(address.DeviceId)
 
 	err = conn.startHandlingInbound()
 	if err != nil {
@@ -422,17 +423,17 @@ func (conn *clientConnection) handleACK(msg *model.Message) {
 }
 
 func (conn *clientConnection) handleRegister(msg *model.Message) {
-	userID, deviceID := conn.getUserID(), conn.getDeviceID()
+	identityKey, deviceId := conn.getIdentityKey(), conn.getDeviceId()
 
 	register := msg.GetRegister()
 
-	err := conn.srvc.presenceRepo.Announce(&model.Address{UserID: userID, DeviceID: deviceID}, conn.srvc.publicAddr)
+	err := conn.srvc.presenceRepo.Announce(&model.Address{IdentityKey: identityKey, DeviceId: deviceId}, conn.srvc.publicAddr)
 	if err != nil {
 		conn.error(msg, err)
 		return
 	}
 
-	err = conn.srvc.db.Register(userID, deviceID, register)
+	err = conn.srvc.db.Register(identityKey, deviceId, register)
 	if err != nil {
 		conn.error(msg, err)
 		return
@@ -442,7 +443,7 @@ func (conn *clientConnection) handleRegister(msg *model.Message) {
 }
 
 func (conn *clientConnection) handleUnregister(msg *model.Message) {
-	err := conn.srvc.db.Unregister(conn.getUserID(), conn.getDeviceID())
+	err := conn.srvc.db.Unregister(conn.getIdentityKey(), conn.getDeviceId())
 	if err != nil {
 		conn.error(msg, err)
 		return
@@ -474,7 +475,7 @@ func (conn *clientConnection) handleOutboundMessage(msg *model.Message) {
 	}
 	tassisHost = strings.ToLower(tassisHost)
 
-	topic := topicFor(outboundMessage.To.UserID, outboundMessage.To.DeviceID)
+	topic := topicFor(outboundMessage.To.IdentityKey, outboundMessage.To.DeviceId)
 	data := outboundMessage.GetUnidentifiedSenderMessage()
 	if conn.srvc.publicAddr != tassisHost {
 		// this is a federated message, write it to a forwarding topic
@@ -517,12 +518,12 @@ func (srvc *Service) publisherFor(topic string) (broker.Publisher, error) {
 	return publisher, nil
 }
 
-func topicFor(userID identity.UserID, deviceID uint32) string {
-	return fmt.Sprintf("%v:%d", userID.String(), deviceID)
+func topicFor(identityKey identity.PublicKey, deviceId []byte) string {
+	return fmt.Sprintf("%v:%v", identityKey.String(), encoding.HumanFriendlyBase32Encoding.EncodeToString(deviceId))
 }
 
 func topicForAddr(addr *model.Address) string {
-	return topicFor(identity.UserID(addr.UserID), addr.DeviceID)
+	return topicFor(identity.PublicKey(addr.IdentityKey), addr.DeviceId)
 }
 
 func (conn *clientConnection) ack(msg *model.Message) {

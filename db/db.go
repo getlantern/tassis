@@ -7,13 +7,13 @@ import (
 
 // DB represents a database that can store user registration information
 type DB interface {
-	Register(userID identity.UserID, deviceID uint32, registration *model.Register) error
+	Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error
 
-	Unregister(userID identity.UserID, deviceID uint32) error
+	Unregister(identityKey identity.PublicKey, deviceId []byte) error
 
 	RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, error)
 
-	PreKeysRemaining(userID identity.UserID, deviceID uint32) (int, error)
+	PreKeysRemaining(identityKey identity.PublicKey, deviceId []byte) (int, error)
 
 	AllRegisteredDevices() ([]*model.Address, error)
 

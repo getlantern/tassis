@@ -150,7 +150,7 @@ func (srvc *Service) startUserTransfers() error {
 				}
 				if tassisHost != srvc.publicAddr {
 					// device moved to a different tassis, transfer messages
-					topic := topicFor(identity.UserID(addr.UserID), addr.DeviceID)
+					topic := topicFor(identity.PublicKey(addr.IdentityKey), addr.DeviceId)
 					subscriber, err := srvc.broker.NewSubscriber(topic)
 					if err != nil {
 						continue
@@ -159,7 +159,7 @@ func (srvc *Service) startUserTransfers() error {
 					if err != nil {
 						log.Error(err)
 					} else {
-						srvc.db.Unregister(identity.UserID(addr.UserID), addr.DeviceID)
+						srvc.db.Unregister(identity.PublicKey(addr.IdentityKey), addr.DeviceId)
 						// TODO: make sure we don't have any weird race conditions here if new messages come in after we did the transfer
 					}
 				}

@@ -6,15 +6,15 @@
  * Clients will typically open two separate connections, authenticating on one and leaving
  * the other unauthenticated.
  *
- * The unauthenticated connection is used for retrieving other users' preKeys and
- * sending messages to them, so as not to reveal the identity of senders.
+ * The unauthenticated connection is used for retrieving other identities' preKeys and
+ * sending messages to them, so as not to reveal the identityKey of senders.
  *
  * The authenticated connection is used for all other operations, including performing key
- * management and receiving messages from other users.
+ * management and receiving messages from other identities.
  *
  * Authentication is performed using a challenge-response pattern in which the server sends
  * an authentication challenge to the client and the client responds with a signed authentication
- * response identifying its UserID and DeviceID. On anonymous connections, clients simply ignore the
+ * response identifying its identityKey and deviceId. On anonymous connections, clients simply ignore the
  * authentication challenge.
  *
  * Messages sent from clients to servers follow a request/response pattern. The server will always
@@ -43,21 +43,21 @@ syntax = "proto3";
 package tassis;
 
 option go_package = "github.com/getlantern/tassis/model";
-option java_package = "io.lantern.tassis";
+option java_package = "io.lantern.messaging.tassis";
 
 // Acknowledges successful receipt of a Message
 message Ack {}
 
 // Indicates than an error occurred processing a request.
 message Error {
-    string name        = 1;  // An identifier for the error, like "unknown_user"
+    string name        = 1;  // An identifier for the error, like "unknown_identity"
     string description = 2;  // Optional additional information about the error
 }
 
 // An Address for a specific client
 message Address {
-    bytes  userID   = 1;  // The 33 byte user ID, which is also the user's public key. It consists of a 1 byte type (always 0x05) followed by 32 bits of ed25519 public key
-    uint32 deviceID = 2;  // Identifier for a specific user device, only unique for a given userID
+    bytes identityKey = 1;  // The 32 byte ed25519 public key that uniquely identifies an identity (e.g. a user)
+    bytes deviceId    = 2;  // Identifier for a specific device, only unique for a given identityKey
 }
 
 // Login information supplied by clients in response to an AuthChallenge.
@@ -75,7 +75,7 @@ message AuthChallenge {
 // The server will accept an AuthResponse only once per connection.
 message AuthResponse {
     bytes login     = 1;  // The serialized form of the Login message
-    bytes signature = 2;  // A signature of the serialized Login message calculated using the private key corresponding to the UserID that's logging in
+    bytes signature = 2;  // A signature of the serialized Login message calculated using the private key corresponding to the IdentityKey that's logging in
 }
 
 // Requires authentication
@@ -83,13 +83,12 @@ message AuthResponse {
 // A request to register a signed preKey and some set of one-time use preKeys. PreKeys are used by clients to perform X3DH key agreement in order to
 // establish end-to-end encrypted sessions.
 //
-// This information is registered in the database under the client's Address. If multiple registrations are received, if the registrationID and signedPreKey
-// match the information on file, the new preKeys will be appended to the ones already on file. Otherwise, the existing registration will be replaced by the
+// This information is registered in the database under the client's Address. If multiple registrations are received, if signedPreKey matches the
+// information on file, the new preKeys will be appended to the ones already on file. Otherwise, the existing registration will be replaced by the
 // latest.
 message Register {
-    uint32         registrationID = 1;  // The local registrationID for this device.
-	bytes          signedPreKey   = 2;  // The signedPreKey for this device.
-    repeated bytes oneTimePreKeys = 3;  // Zero, one or more disposable preKeys for this device.
+	bytes          signedPreKey   = 1;  // The signedPreKey for this device.
+    repeated bytes oneTimePreKeys = 2;  // Zero, one or more disposable preKeys for this device.
 }
 
 // Requires authentication
@@ -99,21 +98,20 @@ message Unregister {}
 
 // Requires anonymous connection
 //
-// A request to retrieve preKey information for all registered devices for the given UserID except those listed in knownDeviceIDs.
+// A request to retrieve preKey information for all registered devices for the given identityKey except those listed in knownDeviceIds.
 message RequestPreKeys {
-    bytes           userID         = 1;  // The UserID for which to retrieve preKeys.
-    repeated uint32 knownDeviceIDs = 2;  // Devices which the client already knows about and doesn't need preKeys for.
+    bytes          identityKey    = 1;  // The identityKey for which to retrieve preKeys.
+    repeated bytes knownDeviceIds = 2;  // Devices of this identity which the client already knows about and doesn't need preKeys for.
 }
 
 // Information about a PreKey for a specific Address.
 message PreKey {
     Address address        = 1;  // The Address that this key material belongs to
-    uint32  registrationID = 2;  // The local registrationID for the device at this Address.
-    bytes   signedPreKey   = 3;  // The most recent signedPreKey for the device at this Address. See https://crypto.stackexchange.com/questions/72148/signal-protocol-how-is-signed-preKey-created
-	bytes   oneTimePreKey  = 4;  // One disposable preKey for the device at this Address. May be empty if none were available (that's okay, Signal can still do an X3DH key agreement without it).
+    bytes   signedPreKey   = 2;  // The most recent signedPreKey for the device at this Address. See https://crypto.stackexchange.com/questions/72148/signal-protocol-how-is-signed-preKey-created
+	bytes   oneTimePreKey  = 3;  // One disposable preKey for the device at this Address. May be empty if none were available (that's okay, Signal can still do an X3DH key agreement without it).
 }
 
-// A list of PreKeys for all of a user's devices, sent in response to RequestPreKeys
+// A list of PreKeys for all of an identityKey's devices, sent in response to RequestPreKeys
 message PreKeys {
     repeated PreKey preKeys = 1;  // One or more preKeys
 }

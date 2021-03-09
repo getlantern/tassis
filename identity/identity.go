@@ -4,22 +4,9 @@ import (
 	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
-	"encoding/base32"
+
+	"github.com/getlantern/tassis/encoding"
 )
-
-var (
-	djbType = []byte{0x05}
-
-	userIDEncoding = base32.NewEncoding("ybndrfg8ejkmcpqxot1uw2sza345h769").WithPadding(base32.NoPadding)
-)
-
-// A UserID is a unique identifier for a user that's also usable as a Signal public
-// identity key.
-//
-// This is a 33 byte value whose first byte indicates the key type for Signal
-// (at the moment this is always 0x05 for DJB_TYPE). The remaining 32 bytes are
-// an ed25519 public key.
-type UserID []byte
 
 // PublicKey is an ed25519.PublicKey that is 32 bytes long
 type PublicKey ed25519.PublicKey
@@ -55,20 +42,10 @@ func (pub PublicKey) Verify(data, signature []byte) bool {
 	return ed25519.Verify(ed25519.PublicKey(pub), data, signature)
 }
 
-// Returns a UserID that's also usable as a Signal public identity key.
-func (pub PublicKey) UserID() UserID {
-	return append(djbType, pub...)
+func (pub PublicKey) String() string {
+	return encoding.HumanFriendlyBase32Encoding.EncodeToString(pub)
 }
 
-// Returns the PublicKey portion of this userID
-func (id UserID) PublicKey() PublicKey {
-	return PublicKey(id[1:])
-}
-
-func (id UserID) String() string {
-	return userIDEncoding.EncodeToString(id)
-}
-
-func UserIDFromString(id string) (UserID, error) {
-	return userIDEncoding.DecodeString(id)
+func PublicKeyFromString(id string) (PublicKey, error) {
+	return encoding.HumanFriendlyBase32Encoding.DecodeString(id)
 }

@@ -12,47 +12,47 @@ import (
 
 func New() db.DB {
 	return &memdb{
-		users: make(map[string]map[uint32]*model.Register),
+		identities: make(map[string]map[string]*model.Register),
 	}
 }
 
 type memdb struct {
-	users map[string]map[uint32]*model.Register
-	mx    sync.Mutex
+	identities map[string]map[string]*model.Register
+	mx         sync.Mutex
 }
 
-func (d *memdb) Register(userID identity.UserID, deviceID uint32, registration *model.Register) error {
-	userIDString := userID.String()
+func (d *memdb) Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
+	identityKeyString := identityKey.String()
 
 	d.mx.Lock()
 	defer d.mx.Unlock()
 
-	user := d.users[userIDString]
-	if user == nil {
-		user = make(map[uint32]*model.Register)
-		d.users[userIDString] = user
+	identity := d.identities[identityKeyString]
+	if identity == nil {
+		identity = make(map[string]*model.Register)
+		d.identities[identityKeyString] = identity
 	}
-	existing := user[deviceID]
-	if existing != nil && existing.RegistrationID == registration.RegistrationID && bytes.Equal(existing.SignedPreKey, registration.SignedPreKey) {
+	existing := identity[string(deviceId)]
+	if existing != nil && bytes.Equal(existing.SignedPreKey, registration.SignedPreKey) {
 		// Add pre-keys
 		existing.OneTimePreKeys = append(existing.OneTimePreKeys, registration.OneTimePreKeys...)
 	} else {
-		user[deviceID] = registration
+		identity[string(deviceId)] = registration
 	}
 	return nil
 }
 
-func (d *memdb) Unregister(userID identity.UserID, deviceID uint32) error {
-	userIDString := userID.String()
+func (d *memdb) Unregister(identityKey identity.PublicKey, deviceId []byte) error {
+	identityKeyString := identityKey.String()
 
 	d.mx.Lock()
 	defer d.mx.Unlock()
 
-	user := d.users[userIDString]
-	if user != nil {
-		delete(user, deviceID)
-		if len(user) == 0 {
-			delete(d.users, userIDString)
+	identity := d.identities[identityKeyString]
+	if identity != nil {
+		delete(identity, string(deviceId))
+		if len(identity) == 0 {
+			delete(d.identities, identityKeyString)
 		}
 	}
 
@@ -60,19 +60,19 @@ func (d *memdb) Unregister(userID identity.UserID, deviceID uint32) error {
 }
 
 func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, error) {
-	userIDString := identity.UserID(request.UserID).String()
+	identityKeyString := identity.PublicKey(request.IdentityKey).String()
 
 	d.mx.Lock()
 	defer d.mx.Unlock()
 
-	user := d.users[userIDString]
-	if user == nil {
-		return nil, model.ErrUnknownUser
+	identity := d.identities[identityKeyString]
+	if identity == nil {
+		return nil, model.ErrUnknownIdentity
 	}
 
-	isKnownDeviceID := func(deviceID uint32) bool {
-		for _, candidate := range request.KnownDeviceIDs {
-			if candidate == deviceID {
+	isKnownDeviceId := func(deviceId string) bool {
+		for _, candidate := range request.KnownDeviceIds {
+			if string(candidate) == deviceId {
 				return true
 			}
 		}
@@ -80,8 +80,8 @@ func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, 
 	}
 
 	result := make([]*model.PreKey, 0)
-	for deviceID, registration := range user {
-		if !isKnownDeviceID(deviceID) {
+	for deviceId, registration := range identity {
+		if !isKnownDeviceId(deviceId) {
 			var oneTimePreKey []byte
 			if len(registration.OneTimePreKeys) > 0 {
 				oneTimePreKey = registration.OneTimePreKeys[len(registration.OneTimePreKeys)-1]
@@ -89,12 +89,11 @@ func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, 
 			}
 			result = append(result, &model.PreKey{
 				Address: &model.Address{
-					UserID:   request.UserID,
-					DeviceID: deviceID,
+					IdentityKey: request.IdentityKey,
+					DeviceId:    []byte(deviceId),
 				},
-				RegistrationID: registration.RegistrationID,
-				SignedPreKey:   registration.SignedPreKey,
-				OneTimePreKey:  oneTimePreKey,
+				SignedPreKey:  registration.SignedPreKey,
+				OneTimePreKey: oneTimePreKey,
 			})
 		}
 	}
@@ -102,18 +101,18 @@ func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, 
 	return result, nil
 }
 
-func (d *memdb) PreKeysRemaining(userID identity.UserID, deviceID uint32) (int, error) {
-	userIDString := userID.String()
+func (d *memdb) PreKeysRemaining(identityKey identity.PublicKey, deviceId []byte) (int, error) {
+	identityKeyString := identityKey.String()
 
 	d.mx.Lock()
 	defer d.mx.Unlock()
 
-	user := d.users[userIDString]
-	if user == nil {
-		return 0, model.ErrUnknownUser
+	identity := d.identities[identityKeyString]
+	if identity == nil {
+		return 0, model.ErrUnknownIdentity
 	}
 
-	device := user[deviceID]
+	device := identity[string(deviceId)]
 	if device == nil {
 		return 0, model.ErrUnknownDevice
 	}
@@ -126,15 +125,15 @@ func (d *memdb) AllRegisteredDevices() ([]*model.Address, error) {
 	d.mx.Lock()
 	defer d.mx.Unlock()
 
-	for userID, devices := range d.users {
-		for deviceID := range devices {
-			uid, err := identity.UserIDFromString(userID)
+	for identityKey, devices := range d.identities {
+		for deviceId := range devices {
+			idKey, err := identity.PublicKeyFromString(identityKey)
 			if err != nil {
 				return nil, err
 			}
 			result = append(result, &model.Address{
-				UserID:   uid,
-				DeviceID: deviceID,
+				IdentityKey: idKey,
+				DeviceId:    []byte(deviceId),
 			})
 		}
 	}

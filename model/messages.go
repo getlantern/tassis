@@ -11,12 +11,12 @@ var (
 		Name: "unknown_error",
 	}
 
-	ErrInvalidUserID = &Error{
-		Name: "invalid_user_id",
+	ErrInvalidIdentityKey = &Error{
+		Name: "invalid_identity_key",
 	}
 
-	ErrUnknownUser = &Error{
-		Name: "unknown_user",
+	ErrUnknownIdentity = &Error{
+		Name: "unknown_identity",
 	}
 
 	ErrUnknownDevice = &Error{
