@@ -379,6 +379,7 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	// verify signature
 	address := login.Address
 	publicKey := identity.PublicKey(address.IdentityKey)
+	log.Debugf("Signature length is: %d", len(authResponse.Signature))
 	if !publicKey.Verify(authResponse.Login, authResponse.Signature) {
 		log.Debug("Signature verification failed")
 		conn.error(msg, model.ErrUnauthorized)
