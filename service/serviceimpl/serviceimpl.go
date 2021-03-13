@@ -370,6 +370,7 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 
 	// verify nonce
 	if !bytes.Equal(conn.authNonce, login.Nonce) {
+		log.Debug("Nonce mismatch")
 		conn.error(msg, model.ErrUnauthorized)
 		conn.Close()
 		return
@@ -379,11 +380,13 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	address := login.Address
 	publicKey := identity.PublicKey(address.IdentityKey)
 	if !publicKey.Verify(authResponse.Login, authResponse.Signature) {
+		log.Debug("Signature verification failed")
 		conn.error(msg, model.ErrUnauthorized)
 		conn.Close()
 		return
 	}
 
+	log.Debug("Login successful")
 	conn.identityKey.Store(address.IdentityKey)
 	conn.deviceId.Store(address.DeviceId)
 
