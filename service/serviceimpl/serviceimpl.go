@@ -373,7 +373,6 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	if !bytes.Equal(conn.authNonce, login.Nonce) {
 		log.Debug("Nonce mismatch")
 		conn.error(msg, model.ErrUnauthorized)
-		conn.Close()
 		return
 	}
 
@@ -384,7 +383,6 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	if !publicKey.Verify(authResponse.Login, authResponse.Signature) {
 		log.Debug("Signature verification failed")
 		conn.error(msg, model.ErrUnauthorized)
-		conn.Close()
 		return
 	}
 
@@ -395,7 +393,6 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	err = conn.startHandlingInbound()
 	if err != nil {
 		conn.error(msg, err)
-		conn.Close()
 		return
 	}
 	if conn.srvc.checkPreKeysInterval > 0 {
