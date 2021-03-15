@@ -375,7 +375,7 @@ Information about a PreKey for a specific Address.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| address | [Address](#tassis.Address) |  | The Address that this key material belongs to |
+| deviceId | [bytes](#bytes) |  | The deviceId that this key material belongs to |
 | signedPreKey | [bytes](#bytes) |  | The most recent signedPreKey for the device at this Address. See https://crypto.stackexchange.com/questions/72148/signal-protocol-how-is-signed-preKey-created |
 | oneTimePreKey | [bytes](#bytes) |  | One disposable preKey for the device at this Address. May be empty if none were available (that's okay, Signal can still do an X3DH key agreement without it). |
 

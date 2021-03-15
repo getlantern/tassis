@@ -189,10 +189,7 @@ deviceLoop:
 			oneTimePreKey = []byte(out[1].(string))
 		}
 		preKeys = append(preKeys, &model.PreKey{
-			Address: &model.Address{
-				IdentityKey: request.IdentityKey,
-				DeviceId:    deviceId,
-			},
+			DeviceId:      deviceId,
 			SignedPreKey:  []byte(out[0].(string)),
 			OneTimePreKey: oneTimePreKey,
 		})

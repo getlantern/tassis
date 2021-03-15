@@ -323,6 +323,7 @@ func (conn *clientConnection) handleOutbound() {
 			}
 		case *model.Message_Register:
 			if !conn.isAuthenticated() {
+				log.Debug("here")
 				err = model.ErrUnauthorized
 			} else {
 				conn.handleRegister(msg)
