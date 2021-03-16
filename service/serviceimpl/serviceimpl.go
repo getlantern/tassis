@@ -395,7 +395,6 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 		go conn.warnPreKeysLowIfNecessary()
 	}
 
-	log.Debug("logged in")
 	conn.ack(msg)
 }
 
@@ -459,7 +458,10 @@ func (conn *clientConnection) handleRequestPreKeys(msg *model.Message) {
 		return
 	}
 
-	outMsg := conn.mb.Build(&model.Message_PreKeys{&model.PreKeys{PreKeys: preKeys}})
+	outMsg := &model.Message{
+		Sequence: msg.Sequence,
+		Payload:  &model.Message_PreKeys{&model.PreKeys{PreKeys: preKeys}},
+	}
 	conn.send(outMsg)
 }
 

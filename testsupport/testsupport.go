@@ -185,8 +185,11 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 	})
 
 	t.Run("request a preKey, pretending that we already know about one of the user's devices", func(t *testing.T) {
-		clientB1Anonymous.Send(requestPreKeys(userA, deviceA2))
-		preKey := clientB1Anonymous.Receive().GetPreKeys().GetPreKeys()[0]
+		req := requestPreKeys(userA, deviceA2)
+		clientB1Anonymous.Send(req)
+		resp := clientB1Anonymous.Receive()
+		require.Equal(t, req.Sequence, resp.Sequence)
+		preKey := resp.GetPreKeys().GetPreKeys()[0]
 		require.Zero(t, clientB1Anonymous.Drain(), "should have received only one preKey")
 
 		expectedPreKey := &model.PreKey{
