@@ -12,7 +12,7 @@ type PublicKey []byte
 // Verifies the given signature on the given data using the Ed25519 version of this Curve25519
 // Public Key
 func (pub PublicKey) Verify(data, signature []byte) bool {
-	// TODO: the below doesn't always work in the unit test, probably because the sign is lost in x25519
+	// TODO: review this code carefully and compare to Signal's implementation of the Curve25519 to ED25519 conversion
 	var key [32]byte
 	copy(key[:], pub)
 
