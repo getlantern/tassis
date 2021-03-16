@@ -395,6 +395,7 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 		go conn.warnPreKeysLowIfNecessary()
 	}
 
+	log.Debug("logged in")
 	conn.ack(msg)
 }
 
