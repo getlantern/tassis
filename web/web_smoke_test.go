@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/getlantern/tassis/identity"
 	"github.com/getlantern/tassis/model"
+	"github.com/getlantern/tassis/testsupport"
 	"github.com/getlantern/tassis/webclient"
 )
 
@@ -38,7 +38,7 @@ func TestSmokeTest(t *testing.T) {
 		}
 	}
 
-	keyPair, err := identity.GenerateKeyPair()
+	keyPair, err := testsupport.GenerateKeyPair()
 	require.NoError(t, err)
 
 	identityKey := keyPair.Public
