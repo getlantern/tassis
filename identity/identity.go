@@ -1,43 +1,13 @@
 package identity
 
 import (
-	"crypto"
 	"crypto/ed25519"
-	"crypto/rand"
 
 	"github.com/getlantern/tassis/encoding"
-	"github.com/jorrizza/ed2curve25519"
 )
 
 // PublicKey is a 32 byte Curve25519 (x25519) public key
 type PublicKey []byte
-
-// PrivateKey is an Ed25519 private key
-type PrivateKey []byte
-
-// KeyPair is a key pair with a Curve25519 public key and the corresponding Ed25519 private key
-type KeyPair struct {
-	Public  PublicKey
-	Private PrivateKey
-}
-
-// GenerateKeyPair generates a new randomg KeyPair
-func GenerateKeyPair() (*KeyPair, error) {
-	public, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		return nil, err
-	}
-	x25519key := ed2curve25519.Ed25519PublicKeyToCurve25519(public)
-	return &KeyPair{
-		Public:  PublicKey(x25519key),
-		Private: PrivateKey(private),
-	}, nil
-}
-
-// Signs the given data and returns the resulting signature
-func (priv PrivateKey) Sign(data []byte) ([]byte, error) {
-	return ed25519.PrivateKey(priv).Sign(rand.Reader, data, crypto.Hash(0))
-}
 
 // Verifies the given signature on the given data using the Ed25519 version of this Curve25519
 // Public Key

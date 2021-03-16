@@ -1,7 +1,9 @@
 package testsupport
 
 import (
-	"fmt"
+	"crypto"
+	"crypto/ed25519"
+	"crypto/rand"
 	"time"
 
 	"github.com/getlantern/tassis/db"
@@ -9,6 +11,7 @@ import (
 	"github.com/getlantern/tassis/model"
 	"github.com/getlantern/tassis/presence"
 	"github.com/getlantern/tassis/service"
+	"github.com/jorrizza/ed2curve25519"
 	"google.golang.org/protobuf/proto"
 
 	"testing"
@@ -62,7 +65,7 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 		}
 	}
 
-	doLogin := func(t *testing.T, serverID int, identityKey identity.PublicKey, deviceId []byte, privateKey identity.PrivateKey) (service.ClientConnection, *model.Message) {
+	doLogin := func(t *testing.T, serverID int, identityKey identity.PublicKey, deviceId []byte, privateKey PrivateKey) (service.ClientConnection, *model.Message) {
 		client, err := servicesByID[serverID].Connect()
 		require.NoError(t, err)
 		authChallenge := client.Receive().GetAuthChallenge()
@@ -92,7 +95,7 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 	}
 
 	// login logs a client in
-	login := func(t *testing.T, serverID int, identityKey identity.PublicKey, deviceId []byte, privateKey identity.PrivateKey) service.ClientConnection {
+	login := func(t *testing.T, serverID int, identityKey identity.PublicKey, deviceId []byte, privateKey PrivateKey) service.ClientConnection {
 		client, msg := doLogin(t, serverID, identityKey, deviceId, privateKey)
 		ack := client.Receive()
 		require.Equal(t, msg.Sequence, ack.Sequence)
@@ -128,55 +131,51 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 		return mb.Build(&model.Message_RequestPreKeys{req})
 	}
 
-	userAKeyPair, err := identity.GenerateKeyPair()
+	userAKeyPair, err := GenerateKeyPair()
 	require.NoError(t, err)
 	userA := userAKeyPair.Public
 	deviceA1 := []byte{11}
 	deviceA2 := []byte{12}
 
-	userBKeyPair, err := identity.GenerateKeyPair()
+	userBKeyPair, err := GenerateKeyPair()
 	require.NoError(t, err)
 	userB := userBKeyPair.Public
 	deviceB1 := []byte{21}
 	deviceB2 := []byte{22}
 
-	fmt.Println("A1")
 	clientA1 := login(t, server1, userA, deviceA1, userAKeyPair.Private)
 	defer clientA1.Close()
 	clientA1Anonymous := connectAnonymous(server1)
 	defer clientA1Anonymous.Close()
 
-	fmt.Println("A2")
 	clientA2 := login(t, server1, userA, deviceA2, userAKeyPair.Private)
 	defer clientA2.Close()
 	clientA2Anonymous := connectAnonymous(server1)
 	defer clientA2Anonymous.Close()
 
-	fmt.Println("B1")
 	clientB1 := login(t, server1, userB, deviceB1, userBKeyPair.Private)
 	defer clientB1.Close()
 	clientB1Anonymous := connectAnonymous(server1)
 	defer clientB1Anonymous.Close()
 
-	fmt.Println("B2")
 	clientB2 := login(t, server1, userB, deviceB2, userBKeyPair.Private)
 	defer clientB2.Close()
 	clientB2Anonymous := connectAnonymous(server1)
 	defer clientB2Anonymous.Close()
 
-	// t.Run("login failure", func(t *testing.T) {
-	// 	keyPair, err := identity.GenerateKeyPair()
-	// 	require.NoError(t, err)
-	// 	wrongKeyPair, err := identity.GenerateKeyPair()
-	// 	require.NoError(t, err)
-	// 	user := keyPair.Public
-	// 	device := []byte{1}
-	// 	client, _ := doLogin(t, server1, user, device, wrongKeyPair.Private)
-	// 	defer client.Close()
-	// 	msg := client.Receive()
-	// 	err = msg.GetError()
-	// 	require.EqualValues(t, model.ErrUnauthorized.Error(), err.Error())
-	// })
+	t.Run("login failure", func(t *testing.T) {
+		keyPair, err := GenerateKeyPair()
+		require.NoError(t, err)
+		wrongKeyPair, err := GenerateKeyPair()
+		require.NoError(t, err)
+		user := keyPair.Public
+		device := []byte{1}
+		client, _ := doLogin(t, server1, user, device, wrongKeyPair.Private)
+		defer client.Close()
+		msg := client.Receive()
+		err = msg.GetError()
+		require.EqualValues(t, model.ErrUnauthorized.Error(), err.Error())
+	})
 
 	t.Run("register 4 devices for 2 users", func(t *testing.T) {
 		roundTrip(t, clientA1, register("spkA1", 11, 12, 13))
@@ -317,7 +316,7 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 	})
 
 	t.Run("test forwarding between tasses", func(t *testing.T) {
-		userCKeyPair, err := identity.GenerateKeyPair()
+		userCKeyPair, err := GenerateKeyPair()
 		require.NoError(t, err)
 		userC := userCKeyPair.Public
 		deviceC1 := []byte{31}
@@ -362,7 +361,7 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 	})
 
 	t.Run("test user transfer between tasses", func(t *testing.T) {
-		userCKeyPair, err := identity.GenerateKeyPair()
+		userCKeyPair, err := GenerateKeyPair()
 		require.NoError(t, err)
 		userC := userCKeyPair.Public
 		deviceC1 := []byte{31}
@@ -412,4 +411,44 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 		require.Equal(t, "backhome", string(inboundMsg))
 		clientC1.Send(mb.NewAck(msg))
 	})
+}
+
+// PrivateKey is an Ed25519 private key
+type PrivateKey []byte
+
+// KeyPair is a key pair with a Curve25519 public key and the corresponding Ed25519 private key
+type KeyPair struct {
+	Public  identity.PublicKey
+	Private PrivateKey
+}
+
+// GenerateKeyPair generates a new random KeyPair
+func GenerateKeyPair() (*KeyPair, error) {
+	data := []byte("some message")
+
+	// Not all key pairs translate well into an x25519 public key, so keep trying until we find
+	// one that does. Note - this is not a problem with key pairs generated by Signal, those all
+	// work with the tassis server.
+	for {
+		public, private, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+		x25519key := ed2curve25519.Ed25519PublicKeyToCurve25519(public)
+
+		kp := &KeyPair{
+			Public:  identity.PublicKey(x25519key),
+			Private: PrivateKey(private),
+		}
+
+		sig, _ := kp.Private.Sign(data)
+		if kp.Public.Verify(data, sig) {
+			return kp, nil
+		}
+	}
+}
+
+// Signs the given data and returns the resulting signature
+func (priv PrivateKey) Sign(data []byte) ([]byte, error) {
+	return ed25519.PrivateKey(priv).Sign(rand.Reader, data, crypto.Hash(0))
 }

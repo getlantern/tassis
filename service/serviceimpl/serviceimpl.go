@@ -323,7 +323,6 @@ func (conn *clientConnection) handleOutbound() {
 			}
 		case *model.Message_Register:
 			if !conn.isAuthenticated() {
-				log.Debug("here")
 				err = model.ErrUnauthorized
 			} else {
 				conn.handleRegister(msg)
@@ -371,7 +370,6 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 
 	// verify nonce
 	if !bytes.Equal(conn.authNonce, login.Nonce) {
-		log.Debug("Nonce mismatch")
 		conn.error(msg, model.ErrUnauthorized)
 		return
 	}
@@ -379,14 +377,11 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	// verify signature
 	address := login.Address
 	publicKey := identity.PublicKey(address.IdentityKey)
-	log.Debugf("Signature length is: %d", len(authResponse.Signature))
 	if !publicKey.Verify(authResponse.Login, authResponse.Signature) {
-		log.Debug("Signature verification failed")
 		conn.error(msg, model.ErrUnauthorized)
 		return
 	}
 
-	log.Debug("Login successful")
 	conn.identityKey.Store(address.IdentityKey)
 	conn.deviceId.Store(address.DeviceId)
 
