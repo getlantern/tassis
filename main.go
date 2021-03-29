@@ -19,7 +19,7 @@ import (
 
 	"github.com/getlantern/tassis/broker/redisbroker"
 	"github.com/getlantern/tassis/db/redisdb"
-	"github.com/getlantern/tassis/presence/mempresence"
+	"github.com/getlantern/tassis/presence/staticpresence"
 	"github.com/getlantern/tassis/service/serviceimpl"
 	"github.com/getlantern/tassis/testsupport"
 	"github.com/getlantern/tassis/web"
@@ -141,7 +141,7 @@ func main() {
 		PublicAddr:           publicAddr,
 		DB:                   d,
 		Broker:               b,
-		PresenceRepo:         mempresence.NewRepository(),
+		PresenceRepo:         staticpresence.NewRepository(publicAddr), // TODO: when ready to start using more than 1 tassis cluster, we'll need to replace this with a real presence implementation
 		CheckPreKeysInterval: testsupport.CheckPreKeysInterval,
 		LowPreKeysLimit:      testsupport.LowPreKeysLimit,
 		NumPreKeysToRequest:  testsupport.NumPreKeysToRequest,
