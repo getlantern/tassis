@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,8 +38,7 @@ func TestAuthorizeUpload(t *testing.T) {
 	require.True(t, expiration.After(time.Now().Add(23*time.Hour)))
 	require.True(t, expiration.Before(time.Now().Add(24*time.Hour)))
 	require.NotEmpty(t, auth.DownloadURL)
-
-	log.Debug(auth.UploadURL)
+	require.True(t, strings.Contains(auth.DownloadURL, folderForToday()))
 
 	// upload some test content with the authorized upload URL
 	buildUploadRequest := func(content string) *http.Request {

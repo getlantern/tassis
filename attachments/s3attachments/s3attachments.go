@@ -51,6 +51,8 @@ type manager struct {
 	client            *minio.Client
 }
 
+// Create a new attachments.Manager that stores attachments in S3 (or an S3 API compatible service).
+// Attachments are stored in the given bucket, in folders named for the current day (e.g. 20210331).
 func New(accessKeyID, secretAccessKey, endpoint, region, bucket string, presignExpiration time.Duration, maxContentLength int) (attachments.Manager, error) {
 	client, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
@@ -90,7 +92,7 @@ func (m *manager) AuthorizeUpload() (*model.UploadAuthorization, error) {
 	if err != nil {
 		return nil, errors.New("unable to generate random file id: %v", err)
 	}
-	key := id.String()
+	key := folderForToday() + "/" + id.String()
 
 	expiration := time.Now().Add(m.presignExpiration)
 	policy := minio.NewPostPolicy()
@@ -111,4 +113,8 @@ func (m *manager) AuthorizeUpload() (*model.UploadAuthorization, error) {
 		MaxUploadSize:          m.maxContentLength,
 		DownloadURL:            fmt.Sprintf("%v/%v/%v", m.serviceURL, m.bucket, key),
 	}, nil
+}
+
+func folderForToday() string {
+	return time.Now().Format("20060102")
 }
