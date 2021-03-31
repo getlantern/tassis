@@ -18,6 +18,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/jorrizza/ed2curve25519 v0.1.0
 	github.com/kr/pretty v0.1.0 // indirect
+	github.com/minio/minio-go/v7 v7.0.10
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/sys v0.0.0-20210119212857-b64e53b001e4 // indirect
 	google.golang.org/protobuf v1.25.0

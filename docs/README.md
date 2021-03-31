@@ -167,6 +167,8 @@ end
     - [Register](#tassis.Register)
     - [RequestPreKeys](#tassis.RequestPreKeys)
     - [Unregister](#tassis.Unregister)
+    - [UploadAuthorization](#tassis.UploadAuthorization)
+    - [UploadAuthorization.UploadFormDataEntry](#tassis.UploadAuthorization.UploadFormDataEntry)
   
 - [Scalar Value Types](#scalar-value-types)
 
@@ -343,6 +345,7 @@ The envelope for all messages sent to/from clients.
 | preKeysLow | [PreKeysLow](#tassis.PreKeysLow) |  |  |
 | outboundMessage | [OutboundMessage](#tassis.OutboundMessage) |  |  |
 | inboundMessage | [bytes](#bytes) |  |  |
+| uploadAuthorization | [UploadAuthorization](#tassis.UploadAuthorization) |  |  |
 
 
 
@@ -463,6 +466,41 @@ A request to retrieve preKey information for all registered devices for the give
 Requires authentication
 
 Removes the recorded registration for the client's Address.
+
+
+
+
+
+
+<a name="tassis.UploadAuthorization"></a>
+
+#### UploadAuthorization
+Provides authorization to upload an attachment to cloud storage
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| uploadURL | [string](#string) |  | The URL to which to upload |
+| uploadFormData | [UploadAuthorization.UploadFormDataEntry](#tassis.UploadAuthorization.UploadFormDataEntry) | repeated | This form data needs to be included with the upload in order to authorize it |
+| authorizationExpiresAt | [int64](#int64) |  | The unix timestamp in nanoseconds when this authorization expires and can no longer be used |
+| maxUploadSize | [int64](#int64) |  | The maxmimum number of bytes that are allowed to be uploaded |
+| downloadURL | [string](#string) |  | The URL from which the attachment may be downloaded once it has been uploaded |
+
+
+
+
+
+
+<a name="tassis.UploadAuthorization.UploadFormDataEntry"></a>
+
+#### UploadAuthorization.UploadFormDataEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
 
 
 
