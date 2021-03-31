@@ -25,6 +25,7 @@ func TestAuthorizeUpload(t *testing.T) {
 	require.NotEmpty(t, accessKeyID, "need to specify AWS_ACCESS_KEY_ID environment variable in order to run this test")
 	require.NotEmpty(t, secretAccessKey, "need to specify AWS_SECRET_ACCESS_KEY environment variable in order to run this test")
 
+	// TODO: for some reason, if we us a smaller expiration like 1 hour, this fails. That's not right.
 	m, err := New(accessKeyID, secretAccessKey, "s3.eu-central-1.wasabisys.com", "eu-central-1", "tassis-eu-central-1", 24*time.Hour, len(testContent))
 	require.NoError(t, err)
 
