@@ -166,9 +166,11 @@ end
     - [PreKeysLow](#tassis.PreKeysLow)
     - [Register](#tassis.Register)
     - [RequestPreKeys](#tassis.RequestPreKeys)
+    - [RequestUploadAuthorizations](#tassis.RequestUploadAuthorizations)
     - [Unregister](#tassis.Unregister)
     - [UploadAuthorization](#tassis.UploadAuthorization)
     - [UploadAuthorization.UploadFormDataEntry](#tassis.UploadAuthorization.UploadFormDataEntry)
+    - [UploadAuthorizations](#tassis.UploadAuthorizations)
   
 - [Scalar Value Types](#scalar-value-types)
 
@@ -343,9 +345,10 @@ The envelope for all messages sent to/from clients.
 | requestPreKeys | [RequestPreKeys](#tassis.RequestPreKeys) |  |  |
 | preKeys | [PreKeys](#tassis.PreKeys) |  |  |
 | preKeysLow | [PreKeysLow](#tassis.PreKeysLow) |  |  |
+| requestUploadAuthorizations | [RequestUploadAuthorizations](#tassis.RequestUploadAuthorizations) |  |  |
+| uploadAuthorizations | [UploadAuthorizations](#tassis.UploadAuthorizations) |  |  |
 | outboundMessage | [OutboundMessage](#tassis.OutboundMessage) |  |  |
 | inboundMessage | [bytes](#bytes) |  |  |
-| uploadAuthorization | [UploadAuthorization](#tassis.UploadAuthorization) |  |  |
 
 
 
@@ -460,6 +463,21 @@ A request to retrieve preKey information for all registered devices for the give
 
 
 
+<a name="tassis.RequestUploadAuthorizations"></a>
+
+#### RequestUploadAuthorizations
+Requests attachment upload authorizations.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| numRequested | [int32](#int32) |  | the number of authorizations requested. The server may not return the number requested. |
+
+
+
+
+
+
 <a name="tassis.Unregister"></a>
 
 #### Unregister
@@ -501,6 +519,21 @@ Provides authorization to upload an attachment to cloud storage
 | ----- | ---- | ----- | ----------- |
 | key | [string](#string) |  |  |
 | value | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="tassis.UploadAuthorizations"></a>
+
+#### UploadAuthorizations
+Multiple UploadAuthorizations
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| authorizations | [UploadAuthorization](#tassis.UploadAuthorization) | repeated |  |
 
 
 

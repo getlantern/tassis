@@ -15,6 +15,7 @@ import (
 	"github.com/getlantern/errors"
 	"github.com/getlantern/golog"
 
+	"github.com/getlantern/tassis/attachments"
 	"github.com/getlantern/tassis/broker"
 	"github.com/getlantern/tassis/db"
 	"github.com/getlantern/tassis/encoding"
@@ -41,6 +42,8 @@ type Opts struct {
 	PresenceRepo presence.Repository
 	// The Forwarder to use for forwarding user messages to other tasses. This should only be used for background tassis processes.
 	Forwarder *forwarder.Forwarder
+	// A manager for attachments
+	AttachmentsManager attachments.Manager
 	// How many publishers to cache (can reduce number connect attempts to broker for performance), defaults to 1
 	PublisherCacheSize int
 	// How frequently to check if a device's one time preKeys are getting low, defaults to 5 minutes
@@ -100,6 +103,7 @@ type Service struct {
 	broker                     broker.Broker
 	presenceRepo               presence.Repository
 	forwarder                  *forwarder.Forwarder
+	attachmentsManager         attachments.Manager
 	checkPreKeysInterval       time.Duration
 	lowPreKeysLimit            int
 	numPreKeysToRequest        int
@@ -128,6 +132,7 @@ func New(opts *Opts) (*Service, error) {
 		broker:                     opts.Broker,
 		presenceRepo:               opts.PresenceRepo,
 		forwarder:                  opts.Forwarder,
+		attachmentsManager:         opts.AttachmentsManager,
 		publisherCache:             publisherCache,
 		checkPreKeysInterval:       opts.CheckPreKeysInterval,
 		lowPreKeysLimit:            opts.LowPreKeysLimit,
@@ -339,6 +344,12 @@ func (conn *clientConnection) handleOutbound() {
 			} else {
 				conn.handleRequestPreKeys(msg)
 			}
+		case *model.Message_RequestUploadAuthorizations:
+			if conn.isAuthenticated() {
+				err = model.ErrNonAnonymous
+			} else {
+				conn.handleRequestUploadAuthorizations(msg)
+			}
 		case *model.Message_OutboundMessage:
 			if conn.isAuthenticated() {
 				err = model.ErrNonAnonymous
@@ -461,6 +472,32 @@ func (conn *clientConnection) handleRequestPreKeys(msg *model.Message) {
 	outMsg := &model.Message{
 		Sequence: msg.Sequence,
 		Payload:  &model.Message_PreKeys{&model.PreKeys{PreKeys: preKeys}},
+	}
+	conn.send(outMsg)
+}
+
+func (conn *clientConnection) handleRequestUploadAuthorizations(msg *model.Message) {
+	request := msg.GetRequestUploadAuthorizations()
+
+	// Get as many authorizations as we can
+	uploadAuthorizations := &model.UploadAuthorizations{}
+	var finalErr error
+	for i := int32(0); i < request.NumRequested; i++ {
+		auth, err := conn.srvc.attachmentsManager.AuthorizeUpload()
+		if err == nil {
+			uploadAuthorizations.Authorizations = append(uploadAuthorizations.Authorizations, auth)
+		} else {
+			finalErr = err
+		}
+	}
+	if len(uploadAuthorizations.Authorizations) == 0 {
+		conn.error(msg, finalErr)
+		return
+	}
+
+	outMsg := &model.Message{
+		Sequence: msg.Sequence,
+		Payload:  &model.Message_UploadAuthorizations{uploadAuthorizations},
 	}
 	conn.send(outMsg)
 }

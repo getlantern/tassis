@@ -264,6 +264,12 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 		require.EqualValues(t, 4, clientA2.Receive().GetPreKeysLow().GetKeysRequested(), "clientA2 should have been notified that prekeys are getting low")
 	})
 
+	t.Run("test upload authorization", func(t *testing.T) {
+		clientA1Anonymous.Send(mb.Build(&model.Message_RequestUploadAuthorizations{&model.RequestUploadAuthorizations{NumRequested: 2}}))
+		auths := clientA1Anonymous.Receive().GetUploadAuthorizations().Authorizations
+		require.True(t, len(auths) > 0)
+	})
+
 	t.Run("send and receive message", func(t *testing.T) {
 		roundTrip(t, clientA1Anonymous, mb.Build(&model.Message_OutboundMessage{&model.OutboundMessage{
 			To: &model.Address{

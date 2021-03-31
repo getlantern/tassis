@@ -57,6 +57,7 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d func(id 
 			Broker:                     b(serverID),
 			PresenceRepo:               presenceRepo,
 			Forwarder:                  webforwarder.New(100),
+			AttachmentsManager:         testsupport.NewNoopAttachmentsManager(),
 			CheckPreKeysInterval:       testsupport.CheckPreKeysInterval,
 			LowPreKeysLimit:            testsupport.LowPreKeysLimit,
 			NumPreKeysToRequest:        testsupport.NumPreKeysToRequest,
