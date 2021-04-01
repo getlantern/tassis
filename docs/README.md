@@ -156,6 +156,7 @@ end
     - [Address](#tassis.Address)
     - [AuthChallenge](#tassis.AuthChallenge)
     - [AuthResponse](#tassis.AuthResponse)
+    - [Configuration](#tassis.Configuration)
     - [Error](#tassis.Error)
     - [ForwardedMessage](#tassis.ForwardedMessage)
     - [Login](#tassis.Login)
@@ -278,6 +279,21 @@ The server will accept an AuthResponse only once per connection.
 
 
 
+<a name="tassis.Configuration"></a>
+
+#### Configuration
+Provides configuration information to clients
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| maxAttachmentSize | [int64](#int64) |  | The maxmimum allows attachment size (encrypted size, not plaintext) |
+
+
+
+
+
+
 <a name="tassis.Error"></a>
 
 #### Error
@@ -338,6 +354,7 @@ The envelope for all messages sent to/from clients.
 | sequence | [uint32](#uint32) |  | the message sequence, either a unique number for request messages or the number of the request message to which a response message corresponds |
 | ack | [Ack](#tassis.Ack) |  |  |
 | error | [Error](#tassis.Error) |  |  |
+| configuration | [Configuration](#tassis.Configuration) |  |  |
 | authChallenge | [AuthChallenge](#tassis.AuthChallenge) |  |  |
 | authResponse | [AuthResponse](#tassis.AuthResponse) |  |  |
 | register | [Register](#tassis.Register) |  |  |

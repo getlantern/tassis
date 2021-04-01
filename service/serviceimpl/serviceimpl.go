@@ -208,7 +208,7 @@ func (srvc *Service) Connect() (service.ClientConnection, error) {
 
 	// handle messages outbound from the client
 	go conn.handleOutbound()
-	go conn.sendAuthChallenge()
+	go conn.sendInitMessages()
 
 	return conn, nil
 }
@@ -364,8 +364,9 @@ func (conn *clientConnection) handleOutbound() {
 	}
 }
 
-func (conn *clientConnection) sendAuthChallenge() {
+func (conn *clientConnection) sendInitMessages() {
 	conn.in <- conn.mb.Build(&model.Message_AuthChallenge{&model.AuthChallenge{Nonce: conn.authNonce}})
+	conn.in <- conn.mb.Build(&model.Message_Configuration{&model.Configuration{MaxAttachmentSize: conn.srvc.attachmentsManager.MaxAttachmentSize()}})
 }
 
 func (conn *clientConnection) handleAuthResponse(msg *model.Message) {

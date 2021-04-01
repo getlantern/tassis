@@ -29,6 +29,8 @@ func TestAuthorizeUpload(t *testing.T) {
 	m, err := NewManager(accessKeyID, secretAccessKey, "s3.eu-central-1.wasabisys.com", "eu-central-1", "tassis-eu-central-1", expiration, len(testContent))
 	require.NoError(t, err)
 
+	require.EqualValues(t, len(testContent), m.MaxAttachmentSize())
+
 	// authorize an upload
 	auth, err := m.AuthorizeUpload()
 	require.NoError(t, err)

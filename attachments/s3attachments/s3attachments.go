@@ -115,6 +115,10 @@ func (m *manager) AuthorizeUpload() (*model.UploadAuthorization, error) {
 	}, nil
 }
 
+func (m *manager) MaxAttachmentSize() int64 {
+	return m.maxContentLength
+}
+
 func folderForToday() string {
 	return time.Now().Format("20060102")
 }

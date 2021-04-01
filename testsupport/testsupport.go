@@ -71,6 +71,8 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 		authChallenge := client.Receive().GetAuthChallenge()
 		require.Len(t, authChallenge.Nonce, 32)
 
+		require.EqualValues(t, maxAttachmentSize, client.Receive().GetConfiguration().MaxAttachmentSize)
+
 		login := &model.Login{
 			Address: &model.Address{
 				IdentityKey: identityKey,
@@ -105,7 +107,8 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 	connectAnonymous := func(serverID int) service.ClientConnection {
 		client, err := servicesByID[serverID].Connect()
 		require.NoError(t, err)
-		client.Receive()
+		client.Receive() // ignore auth challenge
+		require.EqualValues(t, maxAttachmentSize, client.Receive().GetConfiguration().MaxAttachmentSize)
 		return client
 	}
 

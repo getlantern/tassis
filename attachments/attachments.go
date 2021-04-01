@@ -6,4 +6,6 @@ import (
 
 type Manager interface {
 	AuthorizeUpload() (*model.UploadAuthorization, error)
+
+	MaxAttachmentSize() int64
 }

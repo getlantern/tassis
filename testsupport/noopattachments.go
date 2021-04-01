@@ -8,6 +8,10 @@ import (
 	"github.com/getlantern/tassis/model"
 )
 
+const (
+	maxAttachmentSize = 5000000
+)
+
 type noopAttachmentsManager struct {
 	count int
 }
@@ -23,10 +27,14 @@ func (m *noopAttachmentsManager) AuthorizeUpload() (*model.UploadAuthorization, 
 			UploadURL:              "uploadURL",
 			UploadFormData:         map[string]string{"a": "a"},
 			AuthorizationExpiresAt: time.Now().Add(24 * time.Hour).UnixNano(),
-			MaxUploadSize:          5000000,
+			MaxUploadSize:          maxAttachmentSize,
 			DownloadURL:            "downloadURL",
 		}, nil
 	} else {
 		return nil, errors.New("random failure")
 	}
+}
+
+func (m *noopAttachmentsManager) MaxAttachmentSize() int64 {
+	return maxAttachmentSize
 }
