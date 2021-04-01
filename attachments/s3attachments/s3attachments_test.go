@@ -17,6 +17,7 @@ import (
 
 const (
 	testContent = "Hello I'm some test content"
+	expiration  = 1 * time.Hour
 )
 
 func TestAuthorizeUpload(t *testing.T) {
@@ -25,8 +26,7 @@ func TestAuthorizeUpload(t *testing.T) {
 	require.NotEmpty(t, accessKeyID, "need to specify AWS_ACCESS_KEY_ID environment variable in order to run this test")
 	require.NotEmpty(t, secretAccessKey, "need to specify AWS_SECRET_ACCESS_KEY environment variable in order to run this test")
 
-	// TODO: for some reason, if we us a smaller expiration like 1 hour, this fails. That's not right.
-	m, err := New(accessKeyID, secretAccessKey, "s3.eu-central-1.wasabisys.com", "eu-central-1", "tassis-eu-central-1", 24*time.Hour, len(testContent))
+	m, err := NewManager(accessKeyID, secretAccessKey, "s3.eu-central-1.wasabisys.com", "eu-central-1", "tassis-eu-central-1", expiration, len(testContent))
 	require.NoError(t, err)
 
 	// authorize an upload
@@ -35,9 +35,9 @@ func TestAuthorizeUpload(t *testing.T) {
 	require.NotEmpty(t, auth.UploadURL)
 	require.NotEmpty(t, auth.UploadFormData)
 	require.EqualValues(t, len(testContent), auth.MaxUploadSize)
-	expiration := time.Unix(0, auth.AuthorizationExpiresAt)
-	require.True(t, expiration.After(time.Now().Add(23*time.Hour)))
-	require.True(t, expiration.Before(time.Now().Add(24*time.Hour)))
+	expiresAt := time.Unix(0, auth.AuthorizationExpiresAt)
+	require.True(t, expiresAt.After(time.Now().Add(expiration).Add(-1*time.Hour)))
+	require.True(t, expiresAt.Before(time.Now().Add(expiration)))
 	require.NotEmpty(t, auth.DownloadURL)
 	require.True(t, strings.Contains(auth.DownloadURL, folderForToday()))
 

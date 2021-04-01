@@ -17,6 +17,7 @@ import (
 
 	"github.com/getlantern/golog"
 
+	"github.com/getlantern/tassis/attachments/s3attachments"
 	"github.com/getlantern/tassis/broker/redisbroker"
 	"github.com/getlantern/tassis/db/redisdb"
 	"github.com/getlantern/tassis/presence/staticpresence"
@@ -35,6 +36,11 @@ var (
 	redisCAPEM         = os.Getenv("REDIS_CA_CERT")
 	redisClientCertPEM = os.Getenv("REDIS_CLIENT_CERT")
 	redisClientKeyPEM  = os.Getenv("REDIS_CLIENT_KEY")
+	awsAccessKeyID     = os.Getenv("AWS_ACCESS_KEY_ID")
+	awsSecretAccessKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
+	awsEndpoint        = os.Getenv("AWS_ENDPOINT")
+	awsRegion          = os.Getenv("AWS_REGION")
+	awsBucket          = os.Getenv("AWS_BUCKET")
 	checkKeysInterval  = flag.Duration("checkprekeys", 5*time.Minute, "how frequently to check if device is low on prekeys")
 	lowPreKeysLimit    = flag.Int("lowprekeyslimit", 10, "what number of prekeys ")
 	webTimeout         = flag.Duration("webtimeout", 60*time.Second, "timeout for web requests")
@@ -137,11 +143,16 @@ func main() {
 		log.Fatalf("unable to start redisdb: %v", err)
 	}
 
+	attachmentsManager, err := s3attachments.NewManager(awsAccessKeyID, awsSecretAccessKey, awsEndpoint, awsRegion, awsBucket, 24*time.Hour, 100000000)
+	if err != nil {
+		log.Fatalf("unable to start s3 attachments manager: %v", err)
+	}
 	srvc, err := serviceimpl.New(&serviceimpl.Opts{
 		PublicAddr:           publicAddr,
 		DB:                   d,
 		Broker:               b,
 		PresenceRepo:         staticpresence.NewRepository(publicAddr), // TODO: when ready to start using more than 1 tassis cluster, we'll need to replace this with a real presence implementation
+		AttachmentsManager:   attachmentsManager,                       // 100 MB
 		CheckPreKeysInterval: testsupport.CheckPreKeysInterval,
 		LowPreKeysLimit:      testsupport.LowPreKeysLimit,
 		NumPreKeysToRequest:  testsupport.NumPreKeysToRequest,

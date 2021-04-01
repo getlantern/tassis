@@ -53,7 +53,7 @@ type manager struct {
 
 // Create a new attachments.Manager that stores attachments in S3 (or an S3 API compatible service).
 // Attachments are stored in the given bucket, in folders named for the current day (e.g. 20210331).
-func New(accessKeyID, secretAccessKey, endpoint, region, bucket string, presignExpiration time.Duration, maxContentLength int) (attachments.Manager, error) {
+func NewManager(accessKeyID, secretAccessKey, endpoint, region, bucket string, presignExpiration time.Duration, maxContentLength int) (attachments.Manager, error) {
 	client, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
 		Secure: true,
@@ -98,7 +98,7 @@ func (m *manager) AuthorizeUpload() (*model.UploadAuthorization, error) {
 	policy := minio.NewPostPolicy()
 	policy.SetKey(key)
 	policy.SetBucket(m.bucket)
-	policy.SetExpires(expiration.Add(1 * time.Minute))
+	policy.SetExpires(expiration.Add(1 * time.Minute).In(time.UTC)) // NB: we need to pass a UTC time here because the minio API formats the date as a string and s3/wasabi expects it in UTC
 	policy.SetContentLengthRange(1, m.maxContentLength)
 
 	u, formData, err := m.client.PresignedPostPolicy(ctx, policy)
