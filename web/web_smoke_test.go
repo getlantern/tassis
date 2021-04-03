@@ -23,6 +23,9 @@ func TestSmokeTest(t *testing.T) {
 	authChallenge := client.Receive().GetAuthChallenge()
 	require.NotEmpty(t, authChallenge)
 
+	// read and ignore config
+	client.Receive()
+
 	sendForAck := func(msg *model.Message) {
 		client.Send(msg)
 		response := client.Receive()
@@ -93,6 +96,9 @@ func TestSmokeTest(t *testing.T) {
 
 	authChallenge = client.Receive().GetAuthChallenge()
 	require.NotEmpty(t, authChallenge)
+
+	// ignore config
+	client.Receive()
 
 	testMessage := "I'm smoke testing"
 	t.Run("send test message", func(t *testing.T) {
