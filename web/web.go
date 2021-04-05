@@ -68,7 +68,10 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		log.Errorf("unable to upgrade to websocket: %v", err)
 		return
 	}
-	defer conn.Close()
+	defer func() {
+		log.Debug("closing websocket")
+		conn.Close()
+	}()
 
 	atomic.AddInt64(&h.activeConnections, 1)
 	defer atomic.AddInt64(&h.activeConnections, -1)
