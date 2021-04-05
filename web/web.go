@@ -2,6 +2,7 @@
 package web
 
 import (
+	"bytes"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -19,6 +20,8 @@ var (
 	log = golog.LoggerFor("web")
 
 	upgrader = websocket.Upgrader{}
+
+	forceClose = []byte("forceclose") // a special byte sequence that clients can send to force a close (used for testing clients)
 )
 
 type Handler interface {
@@ -109,6 +112,10 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 				if !websocket.IsCloseError(err) {
 					log.Debugf("error reading: %v", err)
 				}
+				return
+			}
+			if bytes.Equal(b, forceClose) {
+				log.Debug("force closing connection at client's request")
 				return
 			}
 			msg := &model.Message{}
