@@ -121,6 +121,7 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 			}
 			if bytes.Equal(b, forceClose) {
 				log.Debug("force closing connection at client's request")
+				conn.Close(websocket.StatusNormalClosure, "forced closure")
 				return
 			}
 			msg := &model.Message{}
