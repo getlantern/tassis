@@ -96,6 +96,7 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 					return
 				}
 			case <-stopCh:
+				log.Debug("client reader closed")
 				return
 			}
 		}
@@ -109,7 +110,9 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		for {
 			_, b, err := conn.ReadMessage()
 			if err != nil {
-				if !websocket.IsCloseError(err) {
+				if websocket.IsCloseError(err) {
+					log.Debug("websocket closed")
+				} else {
 					log.Debugf("error reading: %v", err)
 				}
 				return
