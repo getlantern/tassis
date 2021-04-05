@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"google.golang.org/protobuf/proto"
@@ -70,6 +71,7 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	}
 	defer func() {
 		log.Debug("closing websocket")
+		conn.WriteControl(websocket.CloseNormalClosure, nil, time.Now().Add(10*time.Second))
 		conn.Close()
 	}()
 

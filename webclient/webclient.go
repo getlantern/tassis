@@ -131,8 +131,11 @@ func (client *websocketClient) Drain() int {
 
 func (client *websocketClient) Close() {
 	client.closeOnce.Do(func() {
-		log.Debug("closing websocket conn")
-		client.conn.Close()
-		log.Debug("closed websocket conn")
+		go func() {
+			log.Debug("closing websocket conn")
+			client.conn.WriteControl(websocket.CloseNormalClosure, nil, time.Now().Add(10*time.Second))
+			client.conn.Close()
+			log.Debug("closed websocket conn")
+		}()
 	})
 }
