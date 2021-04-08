@@ -60,6 +60,9 @@ For messages that require a response (like [RequestPreKeys](#signal.RequestPreKe
 
 For all other messages, the remote end (both client and server) should respond with an [Ack](#signal.Ack) whose sequence number is set to the sequence number of the message that is being acknowledged.
 
+### Configuration Messages
+Whenever a client opens a connection, the server immediately sends a Configuration message that informs the client of current configuration parameters like maximum attachment sizes, etc.
+
 ## External Dependencies
 tassis needs a [database](../db/db.go) for storing key distribution information and a pub/sub [message broker](../broker/broker.go) for exchanging messages between users.
 
@@ -107,15 +110,20 @@ participant Database
 participant Broker
 participant SenderServerConn
 end
+participant S3StorageService
 participant Sender
 
 Recipient->RecipientServerConn:Connect WebSocket
+RecipientServerConn->Recipient:Configuration
+Recipient->Recipient:apply configuration
 RecipientServerConn->Recipient:AuthChallenge
 Recipient->RecipientServerConn:AuthResponse
 RecipientServerConn->Recipient:Ack
 
 ==sender connects anonymously==
 Sender->SenderServerConn:Connect WebSocket
+SenderServerConn->Recipient:Configuration
+Sender->Sender:apply configuration
 SenderServerConn->Sender:AuthChallenge
 Sender->Sender:ignore auth challenge
 
@@ -131,13 +139,19 @@ SenderServerConn->Sender:PreKeys (one per device)
 end
 
 ==message exchange==
+Sender->SenderServerConn:RequestUploadAuthorizations
+SenderServerConn->S3StorageService:get pre-signed POST urls
+SenderServerConn->Sender:UploadAuthorizations
+Sender->S3StorageService:post attachment
 Sender->SenderServerConn:OutboundMessage
 SenderServerConn->Broker:Publish()
 SenderServerConn->Sender:Ack
 Broker->RecipientServerConn:sealed sender message
 RecipientServerConn->Recipient:InboundMessage
+Recipient->Recipient:decrypt message
 Recipient->RecipientServerConn:Ack
 RecipientServerConn->Broker:Ack
+Recipient->S3StorageService:download attachment
 end
 
 ==keep oneTimePreKeys filled==
