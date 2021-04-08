@@ -5,13 +5,15 @@ model/Messages.pb.go,docs/README.md: model/Messages.proto docs/README.tmpl
 
 .PHONY: test-and-cover upload-coverage ci live-test
 
+TEST_PACKAGES = $(shell go list ./...)
+COVERED_TEST_PACKAGES = $(shell go list ./... | grep -v identity | grep -v "github.com/getlantern/tassis$$")
+COVER_PACKAGES = $(shell echo $(COVERED_TEST_PACKAGES) | tr ' ', ',')
+
 test-and-cover:
 	@echo "mode: count" > profile.cov && \
-	TP=$$(go list ./...) && \
-	CP=$$(echo $$TP | tr ' ', ',') && \
-	for pkg in $$TP; do \
+	for pkg in $(TEST_PACKAGES); do \
 		echo "Testing $$pkg" && \
-		go test -race -v -count 1 -tags="integrationtest" -covermode=atomic -coverprofile=profile_tmp.cov -coverpkg "$$CP" $$pkg || exit 1; \
+		go test -race -v -count 1 -tags="integrationtest" -covermode=atomic -coverprofile=profile_tmp.cov -coverpkg "$(COVER_PACKAGES)" $$pkg || exit 1; \
 		tail -n +2 profile_tmp.cov >> profile.cov; \
 	done
 

@@ -21,3 +21,6 @@ The first time you run `make ci` it will take a while because it has to download
 
 ### Smoke Testing
 You can run a smoke test against the live environment with `SMOKE_TEST_URL="wss://<host>/api" make smoke-test`, where `<host>` is the host of the tassis server you wish to test.
+
+### curve25519 to ed25519 conversion
+Signal uses curve25519 keys for performing elliptic curve diffie helman key exchanges, and it also converts these into ed25519 keys for message signing. The authentication protocol for tassis relies on such signatures, so it needs a way to convert the curve25519 public key into an ed25519 public key. There's no suitable library for this, so we end up relying on code copied verbatim from golang/crypto/master/ed25519/internal/edwards25519/edwards25519.go to help with that conversion.
