@@ -6,6 +6,7 @@ import (
 
 	"github.com/getlantern/tassis/attachments"
 	"github.com/getlantern/tassis/model"
+	"github.com/getlantern/tassis/util"
 )
 
 const (
@@ -26,7 +27,7 @@ func (m *noopAttachmentsManager) AuthorizeUpload() (*model.UploadAuthorization, 
 		return &model.UploadAuthorization{
 			UploadURL:              "uploadURL",
 			UploadFormData:         map[string]string{"a": "a"},
-			AuthorizationExpiresAt: time.Now().Add(24 * time.Hour).UnixNano(),
+			AuthorizationExpiresAt: util.UnixMillis(time.Now().Add(24 * time.Hour)),
 			MaxUploadSize:          maxAttachmentSize,
 			DownloadURL:            "downloadURL",
 		}, nil

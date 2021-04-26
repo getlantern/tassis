@@ -9,6 +9,7 @@ import (
 	"github.com/getlantern/golog"
 	"github.com/getlantern/tassis/attachments"
 	"github.com/getlantern/tassis/model"
+	"github.com/getlantern/tassis/util"
 	"github.com/getlantern/uuid"
 
 	"github.com/minio/minio-go/v7"
@@ -109,7 +110,7 @@ func (m *manager) AuthorizeUpload() (*model.UploadAuthorization, error) {
 	return &model.UploadAuthorization{
 		UploadURL:              u.String(),
 		UploadFormData:         formData,
-		AuthorizationExpiresAt: int64(expiration.Add(-1 * time.Minute).UnixNano()),
+		AuthorizationExpiresAt: util.UnixMillis(expiration.Add(-1 * time.Minute)),
 		MaxUploadSize:          m.maxContentLength,
 		DownloadURL:            fmt.Sprintf("%v/%v/%v", m.serviceURL, m.bucket, key),
 	}, nil

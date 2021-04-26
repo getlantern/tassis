@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/getlantern/tassis/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,7 +38,7 @@ func TestAuthorizeUpload(t *testing.T) {
 	require.NotEmpty(t, auth.UploadURL)
 	require.NotEmpty(t, auth.UploadFormData)
 	require.EqualValues(t, len(testContent), auth.MaxUploadSize)
-	expiresAt := time.Unix(0, auth.AuthorizationExpiresAt)
+	expiresAt := util.TimeFromMillis(auth.AuthorizationExpiresAt)
 	require.True(t, expiresAt.After(time.Now().Add(expiration).Add(-1*time.Hour)))
 	require.True(t, expiresAt.Before(time.Now().Add(expiration)))
 	require.NotEmpty(t, auth.DownloadURL)

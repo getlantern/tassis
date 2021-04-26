@@ -333,8 +333,8 @@ Used internally by tassis for messages that are to be forwarded to a federated t
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | message | [OutboundMessage](#tassis.OutboundMessage) |  | The message that's being forwarded |
-| firstFailed | [int64](#int64) |  | The unix timestamp in nanoseconds for when the message first failed to forward |
-| lastFailed | [int64](#int64) |  | The unix timestamp in nanoseconds for when the message most recently failed to forward |
+| firstFailed | [int64](#int64) |  | The unix timestamp in milliseconds for when the message first failed to forward |
+| lastFailed | [int64](#int64) |  | The unix timestamp in milliseconds for when the message most recently failed to forward |
 
 
 
@@ -531,7 +531,7 @@ Provides authorization to upload an attachment to cloud storage
 | ----- | ---- | ----- | ----------- |
 | uploadURL | [string](#string) |  | The URL to which to upload |
 | uploadFormData | [UploadAuthorization.UploadFormDataEntry](#tassis.UploadAuthorization.UploadFormDataEntry) | repeated | This form data needs to be included with the upload in order to authorize it |
-| authorizationExpiresAt | [int64](#int64) |  | The unix timestamp in nanoseconds when this authorization expires and can no longer be used |
+| authorizationExpiresAt | [int64](#int64) |  | The unix timestamp in milliseconds when this authorization expires and can no longer be used |
 | maxUploadSize | [int64](#int64) |  | The maxmimum number of bytes that are allowed to be uploaded |
 | downloadURL | [string](#string) |  | The URL from which the attachment may be downloaded once it has been uploaded |
 

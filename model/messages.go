@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync/atomic"
 	"time"
+
+	"github.com/getlantern/tassis/util"
 )
 
 var (
@@ -65,7 +67,7 @@ func TypedError(err error) *Error {
 
 // MarkFailed marks this message as failed (couldn't be forwarded)
 func (msg *ForwardedMessage) MarkFailed() {
-	now := time.Now().UnixNano()
+	now := util.NowUnixMillis()
 	msg.LastFailed = now
 	if msg.FirstFailed == 0 {
 		msg.FirstFailed = now
@@ -78,7 +80,7 @@ func (msg *ForwardedMessage) HasBeenFailingFor() time.Duration {
 	if msg.FirstFailed == 0 {
 		return 0
 	}
-	return time.Duration(time.Now().UnixNano() - msg.FirstFailed)
+	return util.DurationSince(msg.FirstFailed)
 }
 
 // DurationSinceLastFailure indicates how long it's been since this message last failed to forward.
@@ -86,7 +88,7 @@ func (msg *ForwardedMessage) DurationSinceLastFailure() time.Duration {
 	if msg.LastFailed == 0 {
 		return 0
 	}
-	return time.Duration(time.Now().UnixNano() - msg.LastFailed)
+	return util.DurationSince(msg.LastFailed)
 }
 
 type MessageBuilder struct {
