@@ -63,7 +63,7 @@ func NewManager(accessKeyID, secretAccessKey, endpoint, region, bucket string, p
 		return nil, errors.New("unable to build S3 client: %v", err)
 	}
 
-	// set bucket policy to allow public downloads`
+	// set bucket policy to allow public downloads
 	policyID, err := uuid.NewRandom()
 	if err != nil {
 		return nil, errors.New("unable to generate random policy id: %v", err)
