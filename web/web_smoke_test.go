@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/getlantern/tassis/identity"
 	"github.com/getlantern/tassis/model"
+	"github.com/getlantern/tassis/testsupport"
 	"github.com/getlantern/tassis/webclient"
 )
 
@@ -22,6 +22,9 @@ func TestSmokeTest(t *testing.T) {
 
 	authChallenge := client.Receive().GetAuthChallenge()
 	require.NotEmpty(t, authChallenge)
+
+	// read and ignore config
+	client.Receive()
 
 	sendForAck := func(msg *model.Message) {
 		client.Send(msg)
@@ -38,15 +41,15 @@ func TestSmokeTest(t *testing.T) {
 		}
 	}
 
-	keyPair, err := identity.GenerateKeyPair()
+	keyPair, err := testsupport.GenerateKeyPair()
 	require.NoError(t, err)
 
-	userID := keyPair.Public.UserID()
-	deviceID := uint32(0)
+	identityKey := keyPair.Public
+	deviceId := []byte{2}
 
 	address := &model.Address{
-		UserID:   userID,
-		DeviceID: deviceID,
+		IdentityKey: identityKey,
+		DeviceId:    deviceId,
 	}
 
 	var mb model.MessageBuilder
@@ -77,8 +80,7 @@ func TestSmokeTest(t *testing.T) {
 		register := mb.Build(
 			&model.Message_Register{
 				Register: &model.Register{
-					RegistrationID: 0,
-					SignedPreKey:   []byte("spk"),
+					SignedPreKey: []byte("spk"),
 				},
 			})
 		for i := 0; i < 100; i++ {
@@ -94,6 +96,9 @@ func TestSmokeTest(t *testing.T) {
 
 	authChallenge = client.Receive().GetAuthChallenge()
 	require.NotEmpty(t, authChallenge)
+
+	// ignore config
+	client.Receive()
 
 	testMessage := "I'm smoke testing"
 	t.Run("send test message", func(t *testing.T) {

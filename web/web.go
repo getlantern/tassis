@@ -2,12 +2,15 @@
 package web
 
 import (
+	"bytes"
+	"context"
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
-	"github.com/gorilla/websocket"
 	"google.golang.org/protobuf/proto"
+	"nhooyr.io/websocket"
 
 	"github.com/getlantern/golog"
 
@@ -18,7 +21,7 @@ import (
 var (
 	log = golog.LoggerFor("web")
 
-	upgrader = websocket.Upgrader{}
+	forceClose = []byte("forceclose") // a special byte sequence that clients can send to force a close (used for testing clients)
 )
 
 type Handler interface {
@@ -30,14 +33,12 @@ type Handler interface {
 
 type handler struct {
 	srvc              *serviceimpl.Service
-	upgrader          *websocket.Upgrader
 	activeConnections int64
 }
 
 func NewHandler(srvc *serviceimpl.Service) Handler {
 	return &handler{
-		srvc:     srvc,
-		upgrader: &websocket.Upgrader{},
+		srvc: srvc,
 	}
 }
 
@@ -60,12 +61,12 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	}
 	defer client.Close()
 
-	conn, err := h.upgrader.Upgrade(resp, req, nil)
+	conn, err := websocket.Accept(resp, req, nil)
 	if err != nil {
 		log.Errorf("unable to upgrade to websocket: %v", err)
 		return
 	}
-	defer conn.Close()
+	defer conn.Close(websocket.StatusInternalError, "unexpected close")
 
 	atomic.AddInt64(&h.activeConnections, 1)
 	defer atomic.AddInt64(&h.activeConnections, -1)
@@ -87,12 +88,15 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 					log.Errorf("error marshalling message: %v", err)
 					continue
 				}
-				err = conn.WriteMessage(websocket.BinaryMessage, b)
+				ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second) // TODO: make this timeout configurable
+				err = conn.Write(ctx, websocket.MessageBinary, b)
+				cancel()
 				if err != nil {
 					log.Debugf("error writing: %v", err)
 					return
 				}
 			case <-stopCh:
+				log.Debug("client reader closed")
 				return
 			}
 		}
@@ -104,11 +108,20 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 
 		out := client.Out()
 		for {
-			_, b, err := conn.ReadMessage()
+			ctx, cancel := context.WithTimeout(req.Context(), 60*time.Second) // TODO: make this timeout configurable
+			_, b, err := conn.Read(ctx)
+			cancel()
 			if err != nil {
-				if !websocket.IsCloseError(err) {
-					log.Debugf("error reading: %v", err)
+				if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
+					log.Debug("websocket closed normally")
+				} else {
+					log.Errorf("unexpected error reading: %v", err)
 				}
+				return
+			}
+			if bytes.Equal(b, forceClose) {
+				log.Debug("force closing connection at client's request")
+				conn.Close(websocket.StatusNormalClosure, "forced closure")
 				return
 			}
 			msg := &model.Message{}
@@ -122,4 +135,5 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	}()
 
 	wg.Wait()
+	conn.Close(websocket.StatusNormalClosure, "")
 }

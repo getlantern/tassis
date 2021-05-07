@@ -1,4 +1,4 @@
-package mempresence
+package staticpresence
 
 import (
 	"testing"
@@ -7,22 +7,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	tassisHost = "mytassishost"
+)
+
 func TestPresence(t *testing.T) {
-	r := NewRepository()
+	r := NewRepository(tassisHost)
 
 	addr := &model.Address{
 		IdentityKey: []byte("identityKey"),
 		DeviceId:    []byte{5},
 	}
 
-	_, err := r.Find(addr)
-	require.Error(t, err)
-	require.EqualValues(t, model.ErrUnknownDevice, err)
+	host, err := r.Find(addr)
+	require.NoError(t, err)
+	require.EqualValues(t, tassisHost, host)
 
 	err = r.Announce(addr, "thehost")
 	require.NoError(t, err)
 
-	host, err := r.Find(addr)
+	host, err = r.Find(addr)
 	require.NoError(t, err)
-	require.Equal(t, "thehost", host)
+	require.EqualValues(t, tassisHost, host)
 }

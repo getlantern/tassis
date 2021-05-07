@@ -2,17 +2,16 @@
 //
 // It uses the following data model:
 //
-//   device:{<userID>}:<deviceID> - a Map containing the registration information for a given device
-//   user->devices:{<userID>}     - a Set of all of a user's registered devices
-//   otpk:{<userID>}:<deviceID>   - a List of available one-time pre keys for the given device, used as a queue with LPUSH and LPOP.
+//   device:{<identityKey>}:<deviceId> - a Map containing the registration information for a given device
+//   identity->devices:{<identityKey>}     - a Set of all of an identity's registered devices
+//   otpk:{<identityKey>}:<deviceId>   - a List of available one-time pre keys for the given device, used as a queue with LPUSH and LPOP.
 //
-// The {} braces around userID indicate that the userID is used as the sharding key when running on a Redis cluster.
+// The {} braces around identityKey indicate that the identityKey is used as the sharding key when running on a Redis cluster.
 package redisdb
 
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/go-redis/redis/v8"
@@ -21,6 +20,7 @@ import (
 	"github.com/getlantern/golog"
 
 	"github.com/getlantern/tassis/db"
+	"github.com/getlantern/tassis/encoding"
 	"github.com/getlantern/tassis/identity"
 	"github.com/getlantern/tassis/model"
 )
@@ -32,19 +32,16 @@ var (
 const (
 	registerScript = `
 local deviceKey = KEYS[1]
-local userDevicesKey = KEYS[2]
+local identityDevicesKey = KEYS[2]
 local oneTimePreKeysKey = KEYS[3]
 
-local newRegistrationID = ARGV[1]
-local newSignedPreKey = ARGV[2]
-local deviceID = ARGV[3]
+local newSignedPreKey = ARGV[1]
+local deviceId = ARGV[2]
 
-local oldRegistrationID = redis.call("hget", deviceKey, "registrationID")
 local oldSignedPreKey = redis.call("hget", deviceKey, "signedPreKey")
 
-redis.call("sadd", userDevicesKey, deviceID)
-if newRegistrationID ~= oldRegistrationID or newSignedPreKey ~= oldSignedPreKey then
-	redis.call("hset", deviceKey, "registrationID", newRegistrationID)
+redis.call("sadd", identityDevicesKey, deviceId)
+if newSignedPreKey ~= oldSignedPreKey then
 	redis.call("hset", deviceKey, "signedPreKey", newSignedPreKey)
 	redis.call("del", oneTimePreKeysKey)
 	return 0
@@ -55,16 +52,16 @@ return 1
 
 	unregisterScript = `
 local deviceKey = KEYS[1]
-local userDevicesKey = KEYS[2]
+local identityDevicesKey = KEYS[2]
 local oneTimePreKeysKey = KEYS[3]
 
-local deviceID = ARGV[1]
+local deviceId = ARGV[1]
 
-local remainingDevices = redis.call("scard", userDevicesKey)
+local remainingDevices = redis.call("scard", identityDevicesKey)
 if remainingDevices == 1 then
-	redis.call("del", userDevicesKey)
+	redis.call("del", identityDevicesKey)
 else
-	redis.call("srem", userDevicesKey, deviceID)
+	redis.call("srem", identityDevicesKey, deviceId)
 end
 
 redis.call("del", deviceKey, oneTimePreKeysKey)
@@ -75,11 +72,10 @@ return 0
 local deviceKey = KEYS[1]
 local oneTimePreKeysKey = KEYS[2]
 
-local registrationID = redis.call("hget", deviceKey, "registrationID")
 local signedPreKey = redis.call("hget", deviceKey, "signedPreKey")
 local oneTimePreKey = redis.call("lpop", oneTimePreKeysKey)
 
-return {registrationID, signedPreKey, oneTimePreKey}
+return {signedPreKey, oneTimePreKey}
 `
 )
 
@@ -112,19 +108,18 @@ type redisDB struct {
 	getPreKeyScriptSHA  string
 }
 
-func (d *redisDB) Register(userID identity.UserID, deviceID uint32, registration *model.Register) error {
-	deviceKey := deviceKey(userID, deviceID)
-	userDevicesKey := userDevicesKey(userID)
+func (d *redisDB) Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
+	deviceKey := deviceKey(identityKey, deviceId)
+	idDevicesKey := identityDevicesKey(identityKey)
 	oneTimePreKeysKey := oneTimePreKeysKey(deviceKey)
 
 	ctx := context.Background()
 	p := d.client.TxPipeline()
 	p.EvalSha(ctx,
 		d.registerScriptSHA,
-		[]string{deviceKey, userDevicesKey, oneTimePreKeysKey},
-		registration.RegistrationID,
+		[]string{deviceKey, idDevicesKey, oneTimePreKeysKey},
 		string(registration.SignedPreKey),
-		deviceID)
+		encoding.HumanFriendlyBase32Encoding.EncodeToString(deviceId))
 	oneTimePreKeys := make([]interface{}, 0, len(registration.OneTimePreKeys))
 	for _, oneTimePreKey := range registration.OneTimePreKeys {
 		oneTimePreKeys = append(oneTimePreKeys, oneTimePreKey)
@@ -136,38 +131,38 @@ func (d *redisDB) Register(userID identity.UserID, deviceID uint32, registration
 	return err
 }
 
-func (d *redisDB) Unregister(userID identity.UserID, deviceID uint32) error {
-	deviceKey := deviceKey(userID, deviceID)
-	userDevicesKey := userDevicesKey(userID)
+func (d *redisDB) Unregister(identityKey identity.PublicKey, deviceId []byte) error {
+	deviceKey := deviceKey(identityKey, deviceId)
+	idDevicesKey := identityDevicesKey(identityKey)
 	oneTimePreKeysKey := oneTimePreKeysKey(deviceKey)
 
 	return d.client.EvalSha(context.Background(),
 		d.unregisterScriptSHA,
-		[]string{deviceKey, userDevicesKey, oneTimePreKeysKey},
-		deviceID).Err()
+		[]string{deviceKey, idDevicesKey, oneTimePreKeysKey},
+		encoding.HumanFriendlyBase32Encoding.EncodeToString(deviceId)).Err()
 }
 
 func (d *redisDB) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, error) {
-	userDevicesKey := userDevicesKey(request.UserID)
+	idDevicesKey := identityDevicesKey(request.IdentityKey)
 
 	ctx := context.Background()
-	userDevices, err := d.client.SMembers(ctx, userDevicesKey).Result()
+	identityDevices, err := d.client.SMembers(ctx, idDevicesKey).Result()
 	if err != nil {
 		return nil, err
 	}
 
 	cmds := make([]*redis.Cmd, 0)
-	deviceIDs := make([]string, 0)
+	deviceIds := make([]string, 0)
 	p := d.client.Pipeline()
 deviceLoop:
-	for _, deviceID := range userDevices {
-		for _, knownDeviceID := range request.KnownDeviceIDs {
-			if strconv.Itoa(int(knownDeviceID)) == deviceID {
+	for _, deviceId := range identityDevices {
+		for _, knownDeviceId := range request.KnownDeviceIds {
+			if encoding.HumanFriendlyBase32Encoding.EncodeToString(knownDeviceId) == deviceId {
 				continue deviceLoop
 			}
 		}
-		deviceKey := deviceKeyFromString(request.UserID, deviceID)
-		deviceIDs = append(deviceIDs, deviceID)
+		deviceKey := deviceKeyFromString(request.IdentityKey, deviceId)
+		deviceIds = append(deviceIds, deviceId)
 		oneTimePreKeysKey := oneTimePreKeysKey(deviceKey)
 		cmd := p.EvalSha(ctx,
 			d.getPreKeyScriptSHA,
@@ -184,39 +179,30 @@ deviceLoop:
 	for i, cmd := range cmds {
 		_out, _ := cmd.Result()
 		out := _out.([]interface{})
-		_deviceID := deviceIDs[i]
-		deviceID, err := strconv.Atoi(_deviceID)
+		_deviceId := deviceIds[i]
+		deviceId, err := encoding.HumanFriendlyBase32Encoding.DecodeString(_deviceId)
 		if err != nil {
-			return nil, errors.New("unable to parse deviceID '%v': %v", _deviceID, err)
-		}
-		_registrationID := out[0].(string)
-		registrationID, err := strconv.Atoi(_registrationID)
-		if err != nil {
-			return nil, errors.New("unable to parse registrationID '%v': %v", _registrationID, err)
+			return nil, errors.New("unable to parse deviceId '%v': %v", _deviceId, err)
 		}
 		var oneTimePreKey []byte
-		if out[2] != nil {
-			oneTimePreKey = []byte(out[2].(string))
+		if out[1] != nil {
+			oneTimePreKey = []byte(out[1].(string))
 		}
 		preKeys = append(preKeys, &model.PreKey{
-			Address: &model.Address{
-				UserID:   request.UserID,
-				DeviceID: uint32(deviceID),
-			},
-			RegistrationID: uint32(registrationID),
-			SignedPreKey:   []byte(out[1].(string)),
-			OneTimePreKey:  oneTimePreKey,
+			DeviceId:      deviceId,
+			SignedPreKey:  []byte(out[0].(string)),
+			OneTimePreKey: oneTimePreKey,
 		})
 	}
 
 	if len(preKeys) == 0 {
-		return nil, model.ErrUnknownUser
+		return nil, model.ErrUnknownIdentity
 	}
 	return preKeys, nil
 }
 
-func (d *redisDB) PreKeysRemaining(userID identity.UserID, deviceID uint32) (int, error) {
-	deviceKey := deviceKey(userID, deviceID)
+func (d *redisDB) PreKeysRemaining(identityKey identity.PublicKey, deviceId []byte) (int, error) {
+	deviceKey := deviceKey(identityKey, deviceId)
 	oneTimePreKeysKey := oneTimePreKeysKey(deviceKey)
 
 	ctx := context.Background()
@@ -244,15 +230,15 @@ func (d *redisDB) AllRegisteredDevices() ([]*model.Address, error) {
 	result := make([]*model.Address, 0, len(deviceKeys))
 	for _, deviceKey := range deviceKeys {
 		parts := strings.Split(deviceKey, ":")
-		deviceID, err := strconv.Atoi(parts[2])
+		identityKey, err := identity.PublicKeyFromString(strings.Trim(parts[1], "{}"))
 		if err != nil {
 			return nil, err
 		}
-		userID, err := identity.UserIDFromString(strings.Trim(parts[1], "{}"))
+		deviceIdBytes, err := encoding.HumanFriendlyBase32Encoding.DecodeString(parts[2])
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, &model.Address{UserID: userID, DeviceID: uint32(deviceID)})
+		result = append(result, &model.Address{IdentityKey: identityKey, DeviceId: deviceIdBytes})
 	}
 	return result, nil
 }
@@ -261,16 +247,16 @@ func (d *redisDB) Close() error {
 	return d.client.Close()
 }
 
-func deviceKey(userID identity.UserID, deviceID uint32) string {
-	return fmt.Sprintf("device:{%v}:%d", userID.String(), deviceID)
+func deviceKey(identityKey identity.PublicKey, deviceId []byte) string {
+	return deviceKeyFromString(identityKey, encoding.HumanFriendlyBase32Encoding.EncodeToString(deviceId))
 }
 
-func deviceKeyFromString(userID identity.UserID, deviceID string) string {
-	return fmt.Sprintf("device:{%v}:%v", userID.String(), deviceID)
+func deviceKeyFromString(identityKey identity.PublicKey, deviceId string) string {
+	return fmt.Sprintf("device:{%v}:%v", identityKey.String(), deviceId)
 }
 
-func userDevicesKey(userID identity.UserID) string {
-	return "user->devices:{" + userID.String() + "}"
+func identityDevicesKey(identityKey identity.PublicKey) string {
+	return "identity->devices:{" + identityKey.String() + "}"
 }
 
 func oneTimePreKeysKey(deviceKey string) string {

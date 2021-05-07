@@ -1,74 +1,59 @@
 package identity
 
 import (
-	"crypto"
 	"crypto/ed25519"
-	"crypto/rand"
-	"encoding/base32"
+
+	"github.com/getlantern/tassis/encoding"
 )
 
-var (
-	djbType = []byte{0x05}
+// PublicKey is a 32 byte Curve25519 (x25519) public key
+type PublicKey []byte
 
-	userIDEncoding = base32.NewEncoding("ybndrfg8ejkmcpqxot1uw2sza345h769").WithPadding(base32.NoPadding)
-)
-
-// A UserID is a unique identifier for a user that's also usable as a Signal public
-// identity key.
-//
-// This is a 33 byte value whose first byte indicates the key type for Signal
-// (at the moment this is always 0x05 for DJB_TYPE). The remaining 32 bytes are
-// an ed25519 public key.
-type UserID []byte
-
-// PublicKey is an ed25519.PublicKey that is 32 bytes long
-type PublicKey ed25519.PublicKey
-
-// PrivateKey is an ed25519.PrivateKey
-type PrivateKey ed25519.PrivateKey
-
-// KeyPair is an ed25519 key pair
-type KeyPair struct {
-	Public  PublicKey
-	Private PrivateKey
-}
-
-// GenerateKeyPair generates a new randomg KeyPair
-func GenerateKeyPair() (*KeyPair, error) {
-	public, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		return nil, err
-	}
-	return &KeyPair{
-		Public:  PublicKey(public),
-		Private: PrivateKey(private),
-	}, nil
-}
-
-// Signs the given data and returns the resulting signature
-func (priv PrivateKey) Sign(data []byte) ([]byte, error) {
-	return ed25519.PrivateKey(priv).Sign(rand.Reader, data, crypto.Hash(0))
-}
-
-// Verifies the given signature on the given data using this PublicKey
+// Verifies the given signature on the given data using the Ed25519 version of this Curve25519
+// Public Key
 func (pub PublicKey) Verify(data, signature []byte) bool {
-	return ed25519.Verify(ed25519.PublicKey(pub), data, signature)
+	// TODO: review this code carefully and compare to Signal's implementation of the Curve25519 to ED25519 conversion
+	var key [32]byte
+	copy(key[:], pub)
+
+	// below code from https://stackoverflow.com/questions/62586488/how-do-i-sign-a-curve25519-key-in-golang
+	key[31] &= 0x7F
+
+	/* Convert the Curve25519 public key into an Ed25519 public key.  In
+	particular, convert Curve25519's "montgomery" x-coordinate into an
+	Ed25519 "edwards" y-coordinate:
+	ed_y = (mont_x - 1) / (mont_x + 1)
+	NOTE: mont_x=-1 is converted to ed_y=0 since fe_invert is mod-exp
+	Then move the sign bit into the pubkey from the signature.
+	*/
+
+	var edY, one, montX, montXMinusOne, montXPlusOne FieldElement
+	FeFromBytes(&montX, &key)
+	FeOne(&one)
+	FeSub(&montXMinusOne, &montX, &one)
+	FeAdd(&montXPlusOne, &montX, &one)
+	FeInvert(&montXPlusOne, &montXPlusOne)
+	FeMul(&edY, &montXMinusOne, &montXPlusOne)
+
+	var A_ed [32]byte
+	FeToBytes(&A_ed, &edY)
+
+	A_ed[31] |= signature[63] & 0x80
+	signature[63] &= 0x7F
+
+	var sig = make([]byte, 64)
+	var aed = make([]byte, 32)
+
+	copy(sig, signature[:])
+	copy(aed, A_ed[:])
+
+	return ed25519.Verify(aed, data, signature)
 }
 
-// Returns a UserID that's also usable as a Signal public identity key.
-func (pub PublicKey) UserID() UserID {
-	return append(djbType, pub...)
+func (pub PublicKey) String() string {
+	return encoding.HumanFriendlyBase32Encoding.EncodeToString(pub)
 }
 
-// Returns the PublicKey portion of this userID
-func (id UserID) PublicKey() PublicKey {
-	return PublicKey(id[1:])
-}
-
-func (id UserID) String() string {
-	return userIDEncoding.EncodeToString(id)
-}
-
-func UserIDFromString(id string) (UserID, error) {
-	return userIDEncoding.DecodeString(id)
+func PublicKeyFromString(id string) (PublicKey, error) {
+	return encoding.HumanFriendlyBase32Encoding.DecodeString(id)
 }

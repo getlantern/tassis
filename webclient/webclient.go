@@ -2,12 +2,12 @@
 package webclient
 
 import (
-	"net/http"
+	"context"
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"google.golang.org/protobuf/proto"
+	"nhooyr.io/websocket"
 
 	"github.com/getlantern/golog"
 	"github.com/getlantern/tassis/model"
@@ -38,11 +38,10 @@ func (srvc *websocketService) Connect() (service.ClientConnection, error) {
 // Connect creates a new ServiceConnection using a websocket to the given url.
 // bufferDepth specifies how many messages to buffer in either direction.
 func Connect(url string, bufferDepth int) (service.ClientConnection, error) {
-	dialer := websocket.Dialer{
-		Proxy:            http.ProxyFromEnvironment,
-		HandshakeTimeout: 1 * time.Second, // TODO: make this configurable
-	}
-	conn, _, err := dialer.Dial(url, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second) // TODO: make this timeout configurable
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +71,9 @@ func (client *websocketClient) write() {
 			log.Errorf("error marshaling outbound message: %v", err)
 			return
 		}
-		err = client.conn.WriteMessage(websocket.BinaryMessage, b)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second) // TODO: make this timeout configurable
+		err = client.conn.Write(ctx, websocket.MessageBinary, b)
+		cancel()
 		if err != nil {
 			log.Errorf("error writing outbound message: %v", err)
 		}
@@ -80,14 +81,19 @@ func (client *websocketClient) write() {
 }
 
 func (client *websocketClient) read() {
-	// TODO: tighten up closing logic
 	defer client.Close()
 	defer close(client.in)
 
 	for {
-		_, b, err := client.conn.ReadMessage()
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second) // TODO: make this timeout configurable
+		_, b, err := client.conn.Read(ctx)
+		cancel()
 		if err != nil {
-			log.Errorf("error reading inbound message: %v", err)
+			if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
+				log.Debug("client websocket closed normally")
+			} else {
+				log.Errorf("unexpected client error reading: %v", err)
+			}
 			return
 		}
 		msg := &model.Message{}
@@ -131,8 +137,10 @@ func (client *websocketClient) Drain() int {
 
 func (client *websocketClient) Close() {
 	client.closeOnce.Do(func() {
-		log.Debug("closing websocket conn")
-		client.conn.Close()
-		log.Debug("closed websocket conn")
+		go func() {
+			log.Debug("closing client websocket")
+			client.conn.Close(websocket.StatusNormalClosure, "")
+			log.Debug("closed websocket conn")
+		}()
 	})
 }

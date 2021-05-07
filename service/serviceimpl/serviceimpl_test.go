@@ -29,6 +29,7 @@ func TestServiceInMemory(t *testing.T) {
 			Broker:                     membroker.New(),
 			PresenceRepo:               presenceRepo,
 			Forwarder:                  memforwarder.New(services),
+			AttachmentsManager:         testsupport.NewNoopAttachmentsManager(),
 			CheckPreKeysInterval:       testsupport.CheckPreKeysInterval,
 			LowPreKeysLimit:            testsupport.LowPreKeysLimit,
 			NumPreKeysToRequest:        testsupport.NumPreKeysToRequest,

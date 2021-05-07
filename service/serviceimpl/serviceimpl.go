@@ -15,8 +15,10 @@ import (
 	"github.com/getlantern/errors"
 	"github.com/getlantern/golog"
 
+	"github.com/getlantern/tassis/attachments"
 	"github.com/getlantern/tassis/broker"
 	"github.com/getlantern/tassis/db"
+	"github.com/getlantern/tassis/encoding"
 	"github.com/getlantern/tassis/forwarder"
 	"github.com/getlantern/tassis/identity"
 	"github.com/getlantern/tassis/model"
@@ -40,6 +42,8 @@ type Opts struct {
 	PresenceRepo presence.Repository
 	// The Forwarder to use for forwarding user messages to other tasses. This should only be used for background tassis processes.
 	Forwarder *forwarder.Forwarder
+	// A manager for attachments
+	AttachmentsManager attachments.Manager
 	// How many publishers to cache (can reduce number connect attempts to broker for performance), defaults to 1
 	PublisherCacheSize int
 	// How frequently to check if a device's one time preKeys are getting low, defaults to 5 minutes
@@ -99,6 +103,7 @@ type Service struct {
 	broker                     broker.Broker
 	presenceRepo               presence.Repository
 	forwarder                  *forwarder.Forwarder
+	attachmentsManager         attachments.Manager
 	checkPreKeysInterval       time.Duration
 	lowPreKeysLimit            int
 	numPreKeysToRequest        int
@@ -127,6 +132,7 @@ func New(opts *Opts) (*Service, error) {
 		broker:                     opts.Broker,
 		presenceRepo:               opts.PresenceRepo,
 		forwarder:                  opts.Forwarder,
+		attachmentsManager:         opts.AttachmentsManager,
 		publisherCache:             publisherCache,
 		checkPreKeysInterval:       opts.CheckPreKeysInterval,
 		lowPreKeysLimit:            opts.LowPreKeysLimit,
@@ -157,8 +163,8 @@ func New(opts *Opts) (*Service, error) {
 
 type clientConnection struct {
 	authNonce        []byte
-	userID           atomic.Value
-	deviceID         atomic.Value
+	identityKey      atomic.Value
+	deviceId         atomic.Value
 	srvc             *Service
 	mb               *model.MessageBuilder
 	unackedMessages  map[uint32]func() error
@@ -202,29 +208,29 @@ func (srvc *Service) Connect() (service.ClientConnection, error) {
 
 	// handle messages outbound from the client
 	go conn.handleOutbound()
-	go conn.sendAuthChallenge()
+	go conn.sendInitMessages()
 
 	return conn, nil
 }
 
-func (conn *clientConnection) getUserID() []byte {
-	userID := conn.userID.Load()
-	if userID == nil {
+func (conn *clientConnection) getIdentityKey() []byte {
+	identityKey := conn.identityKey.Load()
+	if identityKey == nil {
 		return nil
 	}
-	return userID.([]byte)
+	return identityKey.([]byte)
 }
 
-func (conn *clientConnection) getDeviceID() uint32 {
-	deviceID := conn.deviceID.Load()
-	if deviceID == nil {
-		return 0
+func (conn *clientConnection) getDeviceId() []byte {
+	deviceId := conn.deviceId.Load()
+	if deviceId == nil {
+		return nil
 	}
-	return deviceID.(uint32)
+	return deviceId.([]byte)
 }
 
 func (conn *clientConnection) isAuthenticated() bool {
-	return len(conn.getUserID()) != 0
+	return len(conn.getIdentityKey()) != 0
 }
 
 func (conn *clientConnection) Out() chan<- *model.Message {
@@ -265,7 +271,7 @@ func (conn *clientConnection) Close() {
 
 func (conn *clientConnection) warnPreKeysLowIfNecessary() {
 	for {
-		numPreKeys, err := conn.srvc.db.PreKeysRemaining(conn.getUserID(), conn.getDeviceID())
+		numPreKeys, err := conn.srvc.db.PreKeysRemaining(conn.getIdentityKey(), conn.getDeviceId())
 		if err == nil && numPreKeys < conn.srvc.lowPreKeysLimit {
 			conn.send(conn.mb.Build(&model.Message_PreKeysLow{&model.PreKeysLow{KeysRequested: uint32(conn.srvc.numPreKeysToRequest)}}))
 		}
@@ -280,7 +286,7 @@ func (conn *clientConnection) warnPreKeysLowIfNecessary() {
 }
 
 func (conn *clientConnection) startHandlingInbound() error {
-	subscriber, err := conn.srvc.broker.NewSubscriber(topicFor(conn.getUserID(), conn.getDeviceID()))
+	subscriber, err := conn.srvc.broker.NewSubscriber(topicFor(conn.getIdentityKey(), conn.getDeviceId()))
 	if err != nil {
 		return model.ErrUnableToOpenSubscriber.WithError(err)
 	}
@@ -338,6 +344,12 @@ func (conn *clientConnection) handleOutbound() {
 			} else {
 				conn.handleRequestPreKeys(msg)
 			}
+		case *model.Message_RequestUploadAuthorizations:
+			if conn.isAuthenticated() {
+				err = model.ErrNonAnonymous
+			} else {
+				conn.handleRequestUploadAuthorizations(msg)
+			}
 		case *model.Message_OutboundMessage:
 			if conn.isAuthenticated() {
 				err = model.ErrNonAnonymous
@@ -352,8 +364,9 @@ func (conn *clientConnection) handleOutbound() {
 	}
 }
 
-func (conn *clientConnection) sendAuthChallenge() {
+func (conn *clientConnection) sendInitMessages() {
 	conn.in <- conn.mb.Build(&model.Message_AuthChallenge{&model.AuthChallenge{Nonce: conn.authNonce}})
+	conn.in <- conn.mb.Build(&model.Message_Configuration{&model.Configuration{MaxAttachmentSize: conn.srvc.attachmentsManager.MaxAttachmentSize()}})
 }
 
 func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
@@ -370,26 +383,23 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	// verify nonce
 	if !bytes.Equal(conn.authNonce, login.Nonce) {
 		conn.error(msg, model.ErrUnauthorized)
-		conn.Close()
 		return
 	}
 
 	// verify signature
 	address := login.Address
-	publicKey := identity.UserID(address.UserID).PublicKey()
+	publicKey := identity.PublicKey(address.IdentityKey)
 	if !publicKey.Verify(authResponse.Login, authResponse.Signature) {
 		conn.error(msg, model.ErrUnauthorized)
-		conn.Close()
 		return
 	}
 
-	conn.userID.Store(address.UserID)
-	conn.deviceID.Store(address.DeviceID)
+	conn.identityKey.Store(address.IdentityKey)
+	conn.deviceId.Store(address.DeviceId)
 
 	err = conn.startHandlingInbound()
 	if err != nil {
 		conn.error(msg, err)
-		conn.Close()
 		return
 	}
 	if conn.srvc.checkPreKeysInterval > 0 {
@@ -422,17 +432,17 @@ func (conn *clientConnection) handleACK(msg *model.Message) {
 }
 
 func (conn *clientConnection) handleRegister(msg *model.Message) {
-	userID, deviceID := conn.getUserID(), conn.getDeviceID()
+	identityKey, deviceId := conn.getIdentityKey(), conn.getDeviceId()
 
 	register := msg.GetRegister()
 
-	err := conn.srvc.presenceRepo.Announce(&model.Address{UserID: userID, DeviceID: deviceID}, conn.srvc.publicAddr)
+	err := conn.srvc.presenceRepo.Announce(&model.Address{IdentityKey: identityKey, DeviceId: deviceId}, conn.srvc.publicAddr)
 	if err != nil {
 		conn.error(msg, err)
 		return
 	}
 
-	err = conn.srvc.db.Register(userID, deviceID, register)
+	err = conn.srvc.db.Register(identityKey, deviceId, register)
 	if err != nil {
 		conn.error(msg, err)
 		return
@@ -442,7 +452,7 @@ func (conn *clientConnection) handleRegister(msg *model.Message) {
 }
 
 func (conn *clientConnection) handleUnregister(msg *model.Message) {
-	err := conn.srvc.db.Unregister(conn.getUserID(), conn.getDeviceID())
+	err := conn.srvc.db.Unregister(conn.getIdentityKey(), conn.getDeviceId())
 	if err != nil {
 		conn.error(msg, err)
 		return
@@ -460,7 +470,36 @@ func (conn *clientConnection) handleRequestPreKeys(msg *model.Message) {
 		return
 	}
 
-	outMsg := conn.mb.Build(&model.Message_PreKeys{&model.PreKeys{PreKeys: preKeys}})
+	outMsg := &model.Message{
+		Sequence: msg.Sequence,
+		Payload:  &model.Message_PreKeys{&model.PreKeys{PreKeys: preKeys}},
+	}
+	conn.send(outMsg)
+}
+
+func (conn *clientConnection) handleRequestUploadAuthorizations(msg *model.Message) {
+	request := msg.GetRequestUploadAuthorizations()
+
+	// Get as many authorizations as we can
+	uploadAuthorizations := &model.UploadAuthorizations{}
+	var finalErr error
+	for i := int32(0); i < request.NumRequested; i++ {
+		auth, err := conn.srvc.attachmentsManager.AuthorizeUpload()
+		if err == nil {
+			uploadAuthorizations.Authorizations = append(uploadAuthorizations.Authorizations, auth)
+		} else {
+			finalErr = err
+		}
+	}
+	if len(uploadAuthorizations.Authorizations) == 0 {
+		conn.error(msg, finalErr)
+		return
+	}
+
+	outMsg := &model.Message{
+		Sequence: msg.Sequence,
+		Payload:  &model.Message_UploadAuthorizations{uploadAuthorizations},
+	}
 	conn.send(outMsg)
 }
 
@@ -474,7 +513,7 @@ func (conn *clientConnection) handleOutboundMessage(msg *model.Message) {
 	}
 	tassisHost = strings.ToLower(tassisHost)
 
-	topic := topicFor(outboundMessage.To.UserID, outboundMessage.To.DeviceID)
+	topic := topicFor(outboundMessage.To.IdentityKey, outboundMessage.To.DeviceId)
 	data := outboundMessage.GetUnidentifiedSenderMessage()
 	if conn.srvc.publicAddr != tassisHost {
 		// this is a federated message, write it to a forwarding topic
@@ -517,12 +556,12 @@ func (srvc *Service) publisherFor(topic string) (broker.Publisher, error) {
 	return publisher, nil
 }
 
-func topicFor(userID identity.UserID, deviceID uint32) string {
-	return fmt.Sprintf("%v:%d", userID.String(), deviceID)
+func topicFor(identityKey identity.PublicKey, deviceId []byte) string {
+	return fmt.Sprintf("%v:%v", identityKey.String(), encoding.HumanFriendlyBase32Encoding.EncodeToString(deviceId))
 }
 
 func topicForAddr(addr *model.Address) string {
-	return topicFor(identity.UserID(addr.UserID), addr.DeviceID)
+	return topicFor(identity.PublicKey(addr.IdentityKey), addr.DeviceId)
 }
 
 func (conn *clientConnection) ack(msg *model.Message) {

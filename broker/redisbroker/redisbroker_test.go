@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/getlantern/tassis/util"
 	"github.com/go-redis/redis/v8"
 
 	"testing"
@@ -15,7 +16,7 @@ import (
 )
 
 func TestPublishSubscribe(t *testing.T) {
-	topic := fmt.Sprintf("%d", time.Now().UnixNano())
+	topic := fmt.Sprintf("%d", util.NowUnixMillis())
 
 	client := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",

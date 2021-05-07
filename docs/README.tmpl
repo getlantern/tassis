@@ -50,7 +50,7 @@ If acknowledgements are lost, messages may be delivered multiple times, so clien
 The messaging server enforces limits on how many messages are retained for each device. If devices do not retrieve messages prior to those limits being hit, messages may be lost in transit.
 
 ## Websockets API
-The public API uses websockets. Clients open two connections to ws[s]://server/<userID>/<deviceID>, one authenticated connection and one unauthenticated connection. To preserve sender anonymity, they retrieve key material and send messages on the unauthenticated connection. All other operations happen on the authenticated connection.
+The public API uses websockets. Clients open two connections to ws[s]://server/<identityKey>/<deviceId>, one authenticated connection and one unauthenticated connection. To preserve sender anonymity, they retrieve key material and send messages on the unauthenticated connection. All other operations happen on the authenticated connection.
 
 All messages in the context of a client connection have a unique sequence number that identifies the message (separate sequences for both directions).
 
@@ -59,6 +59,9 @@ For all messages, if an error is encountered while processing the message, the s
 For messages that require a response (like [RequestPreKeys](#signal.RequestPreKeys)), if there was no error, the remote end will respond the corresponding response messages (like [PreKey](#signal.PreKey)).
 
 For all other messages, the remote end (both client and server) should respond with an [Ack](#signal.Ack) whose sequence number is set to the sequence number of the message that is being acknowledged.
+
+### Configuration Messages
+Whenever a client opens a connection, the server immediately sends a Configuration message that informs the client of current configuration parameters like maximum attachment sizes, etc.
 
 ## External Dependencies
 tassis needs a [database](../db/db.go) for storing key distribution information and a pub/sub [message broker](../broker/broker.go) for exchanging messages between users.
@@ -70,10 +73,10 @@ tassis depends on Redis 6.2+. Currently, 6.2 is still in release candidate statu
 ## Security
 
 ### Authentication
-tassis supports both authenticated and unauthenticated connections. At the beginning of every connection, the server sends an [AuthChallenge](#signal.AuthChallenge) to the client with a nonce. Clients that wish to remain anonymous can simply ignore the challenge. Clients that wish to authenticate respond with an [AuthResponse](#signal.AuthResponse) containing their Address (UserID and DeviceID), the nonce from the challenge, and a signature over the Address+Nonce. The server then verifies that the nonce matches the expected value for this connection and that the signature is correct based on the sender's public key (which is also their userID). If yes, the user is authenticated. If not, the server returns an error and closes the connection.
+tassis supports both authenticated and unauthenticated connections. At the beginning of every connection, the server sends an [AuthChallenge](#signal.AuthChallenge) to the client with a nonce. Clients that wish to remain anonymous can simply ignore the challenge. Clients that wish to authenticate respond with an [AuthResponse](#signal.AuthResponse) containing their Address (IdentityKey and DeviceId), the nonce from the challenge, and a signature over the Address+Nonce. The server then verifies that the nonce matches the expected value for this connection and that the signature is correct based on the sender's IdentityKey. If yes, the user is authenticated. If not, the server returns an error and closes the connection.
 
 ### Key Distribution
-In principle, tassis only provides a convenience for key-distribution, and it's encumbent on clients and end-users to verify key material for themselves. The UserID is in fact also the public key corresponding to that UserID (no key rotation allowed for a given UserID), so in practice if users are confident that they're sending a message to the correct UserID, they can be confident that it's being encrypted for reading by the owner of that UserID.
+In principle, tassis only provides a convenience for key-distribution, and it's encumbent on clients and end-users to verify key material for themselves. The identityKey is in fact also the public key corresponding to that identity (no key rotation allowed for a given identityKey), so in practice if people are confident that they're sending a message to the correct identityKey, they can be confident that it's being encrypted for reading by the owner of that IdentityKey.
 
 ### Transport Security
 
@@ -90,7 +93,7 @@ Because clients rely on tassis for the actual transport of messages, it is impor
 Rate limiting should be used to prevent individual clients from flooding the network, or any particular user, with messages. *this is not yet implemented*
 
 ##### Message Stealing
-In order to prevent unauthorized users from stealing messages before they can be received by their legitimate clients, tassis authenticates clients based on UserID to make sure that only authorized clients may read messages on behalf of a specific user.
+In order to prevent unauthorized users from stealing messages before they can be received by their legitimate clients, tassis authenticates clients based on IdentityKey to make sure that only authorized clients may read messages on behalf of a specific user.
 
 ## Message Exchange Flow
 ![Message Exchange Flow](mainflow.png)
@@ -107,15 +110,20 @@ participant Database
 participant Broker
 participant SenderServerConn
 end
+participant S3StorageService
 participant Sender
 
 Recipient->RecipientServerConn:Connect WebSocket
+RecipientServerConn->Recipient:Configuration
+Recipient->Recipient:apply configuration
 RecipientServerConn->Recipient:AuthChallenge
 Recipient->RecipientServerConn:AuthResponse
 RecipientServerConn->Recipient:Ack
 
 ==sender connects anonymously==
 Sender->SenderServerConn:Connect WebSocket
+SenderServerConn->Recipient:Configuration
+Sender->Sender:apply configuration
 SenderServerConn->Sender:AuthChallenge
 Sender->Sender:ignore auth challenge
 
@@ -131,13 +139,19 @@ SenderServerConn->Sender:PreKeys (one per device)
 end
 
 ==message exchange==
+Sender->SenderServerConn:RequestUploadAuthorizations
+SenderServerConn->S3StorageService:get pre-signed POST urls
+SenderServerConn->Sender:UploadAuthorizations
+Sender->S3StorageService:post attachment
 Sender->SenderServerConn:OutboundMessage
 SenderServerConn->Broker:Publish()
 SenderServerConn->Sender:Ack
 Broker->RecipientServerConn:sealed sender message
 RecipientServerConn->Recipient:InboundMessage
+Recipient->Recipient:decrypt message
 Recipient->RecipientServerConn:Ack
 RecipientServerConn->Broker:Ack
+Recipient->S3StorageService:download attachment
 end
 
 ==keep oneTimePreKeys filled==

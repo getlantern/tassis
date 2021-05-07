@@ -50,7 +50,7 @@ If acknowledgements are lost, messages may be delivered multiple times, so clien
 The messaging server enforces limits on how many messages are retained for each device. If devices do not retrieve messages prior to those limits being hit, messages may be lost in transit.
 
 ## Websockets API
-The public API uses websockets. Clients open two connections to ws[s]://server/<userID>/<deviceID>, one authenticated connection and one unauthenticated connection. To preserve sender anonymity, they retrieve key material and send messages on the unauthenticated connection. All other operations happen on the authenticated connection.
+The public API uses websockets. Clients open two connections to ws[s]://server/<identityKey>/<deviceId>, one authenticated connection and one unauthenticated connection. To preserve sender anonymity, they retrieve key material and send messages on the unauthenticated connection. All other operations happen on the authenticated connection.
 
 All messages in the context of a client connection have a unique sequence number that identifies the message (separate sequences for both directions).
 
@@ -59,6 +59,9 @@ For all messages, if an error is encountered while processing the message, the s
 For messages that require a response (like [RequestPreKeys](#signal.RequestPreKeys)), if there was no error, the remote end will respond the corresponding response messages (like [PreKey](#signal.PreKey)).
 
 For all other messages, the remote end (both client and server) should respond with an [Ack](#signal.Ack) whose sequence number is set to the sequence number of the message that is being acknowledged.
+
+### Configuration Messages
+Whenever a client opens a connection, the server immediately sends a Configuration message that informs the client of current configuration parameters like maximum attachment sizes, etc.
 
 ## External Dependencies
 tassis needs a [database](../db/db.go) for storing key distribution information and a pub/sub [message broker](../broker/broker.go) for exchanging messages between users.
@@ -70,10 +73,10 @@ tassis depends on Redis 6.2+. Currently, 6.2 is still in release candidate statu
 ## Security
 
 ### Authentication
-tassis supports both authenticated and unauthenticated connections. At the beginning of every connection, the server sends an [AuthChallenge](#signal.AuthChallenge) to the client with a nonce. Clients that wish to remain anonymous can simply ignore the challenge. Clients that wish to authenticate respond with an [AuthResponse](#signal.AuthResponse) containing their Address (UserID and DeviceID), the nonce from the challenge, and a signature over the Address+Nonce. The server then verifies that the nonce matches the expected value for this connection and that the signature is correct based on the sender's public key (which is also their userID). If yes, the user is authenticated. If not, the server returns an error and closes the connection.
+tassis supports both authenticated and unauthenticated connections. At the beginning of every connection, the server sends an [AuthChallenge](#signal.AuthChallenge) to the client with a nonce. Clients that wish to remain anonymous can simply ignore the challenge. Clients that wish to authenticate respond with an [AuthResponse](#signal.AuthResponse) containing their Address (IdentityKey and DeviceId), the nonce from the challenge, and a signature over the Address+Nonce. The server then verifies that the nonce matches the expected value for this connection and that the signature is correct based on the sender's IdentityKey. If yes, the user is authenticated. If not, the server returns an error and closes the connection.
 
 ### Key Distribution
-In principle, tassis only provides a convenience for key-distribution, and it's encumbent on clients and end-users to verify key material for themselves. The UserID is in fact also the public key corresponding to that UserID (no key rotation allowed for a given UserID), so in practice if users are confident that they're sending a message to the correct UserID, they can be confident that it's being encrypted for reading by the owner of that UserID.
+In principle, tassis only provides a convenience for key-distribution, and it's encumbent on clients and end-users to verify key material for themselves. The identityKey is in fact also the public key corresponding to that identity (no key rotation allowed for a given identityKey), so in practice if people are confident that they're sending a message to the correct identityKey, they can be confident that it's being encrypted for reading by the owner of that IdentityKey.
 
 ### Transport Security
 
@@ -90,7 +93,7 @@ Because clients rely on tassis for the actual transport of messages, it is impor
 Rate limiting should be used to prevent individual clients from flooding the network, or any particular user, with messages. *this is not yet implemented*
 
 ##### Message Stealing
-In order to prevent unauthorized users from stealing messages before they can be received by their legitimate clients, tassis authenticates clients based on UserID to make sure that only authorized clients may read messages on behalf of a specific user.
+In order to prevent unauthorized users from stealing messages before they can be received by their legitimate clients, tassis authenticates clients based on IdentityKey to make sure that only authorized clients may read messages on behalf of a specific user.
 
 ## Message Exchange Flow
 ![Message Exchange Flow](mainflow.png)
@@ -107,15 +110,20 @@ participant Database
 participant Broker
 participant SenderServerConn
 end
+participant S3StorageService
 participant Sender
 
 Recipient->RecipientServerConn:Connect WebSocket
+RecipientServerConn->Recipient:Configuration
+Recipient->Recipient:apply configuration
 RecipientServerConn->Recipient:AuthChallenge
 Recipient->RecipientServerConn:AuthResponse
 RecipientServerConn->Recipient:Ack
 
 ==sender connects anonymously==
 Sender->SenderServerConn:Connect WebSocket
+SenderServerConn->Recipient:Configuration
+Sender->Sender:apply configuration
 SenderServerConn->Sender:AuthChallenge
 Sender->Sender:ignore auth challenge
 
@@ -131,13 +139,19 @@ SenderServerConn->Sender:PreKeys (one per device)
 end
 
 ==message exchange==
+Sender->SenderServerConn:RequestUploadAuthorizations
+SenderServerConn->S3StorageService:get pre-signed POST urls
+SenderServerConn->Sender:UploadAuthorizations
+Sender->S3StorageService:post attachment
 Sender->SenderServerConn:OutboundMessage
 SenderServerConn->Broker:Publish()
 SenderServerConn->Sender:Ack
 Broker->RecipientServerConn:sealed sender message
 RecipientServerConn->Recipient:InboundMessage
+Recipient->Recipient:decrypt message
 Recipient->RecipientServerConn:Ack
 RecipientServerConn->Broker:Ack
+Recipient->S3StorageService:download attachment
 end
 
 ==keep oneTimePreKeys filled==
@@ -156,6 +170,7 @@ end
     - [Address](#tassis.Address)
     - [AuthChallenge](#tassis.AuthChallenge)
     - [AuthResponse](#tassis.AuthResponse)
+    - [Configuration](#tassis.Configuration)
     - [Error](#tassis.Error)
     - [ForwardedMessage](#tassis.ForwardedMessage)
     - [Login](#tassis.Login)
@@ -166,7 +181,11 @@ end
     - [PreKeysLow](#tassis.PreKeysLow)
     - [Register](#tassis.Register)
     - [RequestPreKeys](#tassis.RequestPreKeys)
+    - [RequestUploadAuthorizations](#tassis.RequestUploadAuthorizations)
     - [Unregister](#tassis.Unregister)
+    - [UploadAuthorization](#tassis.UploadAuthorization)
+    - [UploadAuthorization.UploadFormDataEntry](#tassis.UploadAuthorization.UploadFormDataEntry)
+    - [UploadAuthorizations](#tassis.UploadAuthorizations)
   
 - [Scalar Value Types](#scalar-value-types)
 
@@ -183,15 +202,15 @@ Clients typically connect to tassis via WebSockets to exchange messages.
 Clients will typically open two separate connections, authenticating on one and leaving
 the other unauthenticated.
 
-The unauthenticated connection is used for retrieving other users' preKeys and
-sending messages to them, so as not to reveal the identity of senders.
+The unauthenticated connection is used for retrieving other identities' preKeys and
+sending messages to them, so as not to reveal the identityKey of senders.
 
 The authenticated connection is used for all other operations, including performing key
-management and receiving messages from other users.
+management and receiving messages from other identities.
 
 Authentication is performed using a challenge-response pattern in which the server sends
 an authentication challenge to the client and the client responds with a signed authentication
-response identifying its UserID and DeviceID. On anonymous connections, clients simply ignore the
+response identifying its identityKey and deviceId. On anonymous connections, clients simply ignore the
 authentication challenge.
 
 Messages sent from clients to servers follow a request/response pattern. The server will always
@@ -234,8 +253,8 @@ An Address for a specific client
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| userID | [bytes](#bytes) |  | The 33 byte user ID, which is also the user's public key. It consists of a 1 byte type (always 0x05) followed by 32 bits of ed25519 public key |
-| deviceID | [uint32](#uint32) |  | Identifier for a specific user device, only unique for a given userID |
+| identityKey | [bytes](#bytes) |  | The 32 byte ed25519 public key that uniquely identifies an identity (e.g. a user) |
+| deviceId | [bytes](#bytes) |  | Identifier for a specific device, only unique for a given identityKey |
 
 
 
@@ -267,7 +286,22 @@ The server will accept an AuthResponse only once per connection.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | login | [bytes](#bytes) |  | The serialized form of the Login message |
-| signature | [bytes](#bytes) |  | A signature of the serialized Login message calculated using the private key corresponding to the UserID that's logging in |
+| signature | [bytes](#bytes) |  | A signature of the serialized Login message calculated using the private key corresponding to the IdentityKey that's logging in |
+
+
+
+
+
+
+<a name="tassis.Configuration"></a>
+
+#### Configuration
+Provides configuration information to clients
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| maxAttachmentSize | [int64](#int64) |  | The maxmimum allows attachment size (encrypted size, not plaintext) |
 
 
 
@@ -282,7 +316,7 @@ Indicates than an error occurred processing a request.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | An identifier for the error, like "unknown_user" |
+| name | [string](#string) |  | An identifier for the error, like "unknown_identity" |
 | description | [string](#string) |  | Optional additional information about the error |
 
 
@@ -299,8 +333,8 @@ Used internally by tassis for messages that are to be forwarded to a federated t
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | message | [OutboundMessage](#tassis.OutboundMessage) |  | The message that's being forwarded |
-| firstFailed | [int64](#int64) |  | The unix timestamp in nanoseconds for when the message first failed to forward |
-| lastFailed | [int64](#int64) |  | The unix timestamp in nanoseconds for when the message most recently failed to forward |
+| firstFailed | [int64](#int64) |  | The unix timestamp in milliseconds for when the message first failed to forward |
+| lastFailed | [int64](#int64) |  | The unix timestamp in milliseconds for when the message most recently failed to forward |
 
 
 
@@ -334,6 +368,7 @@ The envelope for all messages sent to/from clients.
 | sequence | [uint32](#uint32) |  | the message sequence, either a unique number for request messages or the number of the request message to which a response message corresponds |
 | ack | [Ack](#tassis.Ack) |  |  |
 | error | [Error](#tassis.Error) |  |  |
+| configuration | [Configuration](#tassis.Configuration) |  |  |
 | authChallenge | [AuthChallenge](#tassis.AuthChallenge) |  |  |
 | authResponse | [AuthResponse](#tassis.AuthResponse) |  |  |
 | register | [Register](#tassis.Register) |  |  |
@@ -341,6 +376,8 @@ The envelope for all messages sent to/from clients.
 | requestPreKeys | [RequestPreKeys](#tassis.RequestPreKeys) |  |  |
 | preKeys | [PreKeys](#tassis.PreKeys) |  |  |
 | preKeysLow | [PreKeysLow](#tassis.PreKeysLow) |  |  |
+| requestUploadAuthorizations | [RequestUploadAuthorizations](#tassis.RequestUploadAuthorizations) |  |  |
+| uploadAuthorizations | [UploadAuthorizations](#tassis.UploadAuthorizations) |  |  |
 | outboundMessage | [OutboundMessage](#tassis.OutboundMessage) |  |  |
 | inboundMessage | [bytes](#bytes) |  |  |
 
@@ -375,8 +412,7 @@ Information about a PreKey for a specific Address.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| address | [Address](#tassis.Address) |  | The Address that this key material belongs to |
-| registrationID | [uint32](#uint32) |  | The local registrationID for the device at this Address. |
+| deviceId | [bytes](#bytes) |  | The deviceId that this key material belongs to |
 | signedPreKey | [bytes](#bytes) |  | The most recent signedPreKey for the device at this Address. See https://crypto.stackexchange.com/questions/72148/signal-protocol-how-is-signed-preKey-created |
 | oneTimePreKey | [bytes](#bytes) |  | One disposable preKey for the device at this Address. May be empty if none were available (that's okay, Signal can still do an X3DH key agreement without it). |
 
@@ -388,7 +424,7 @@ Information about a PreKey for a specific Address.
 <a name="tassis.PreKeys"></a>
 
 #### PreKeys
-A list of PreKeys for all of a user's devices, sent in response to RequestPreKeys
+A list of PreKeys for all of an identityKey's devices, sent in response to RequestPreKeys
 
 
 | Field | Type | Label | Description |
@@ -425,14 +461,13 @@ Requires authentication
 A request to register a signed preKey and some set of one-time use preKeys. PreKeys are used by clients to perform X3DH key agreement in order to
 establish end-to-end encrypted sessions.
 
-This information is registered in the database under the client's Address. If multiple registrations are received, if the registrationID and signedPreKey
-match the information on file, the new preKeys will be appended to the ones already on file. Otherwise, the existing registration will be replaced by the
+This information is registered in the database under the client's Address. If multiple registrations are received, if signedPreKey matches the
+information on file, the new preKeys will be appended to the ones already on file. Otherwise, the existing registration will be replaced by the
 latest.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| registrationID | [uint32](#uint32) |  | The local registrationID for this device. |
 | signedPreKey | [bytes](#bytes) |  | The signedPreKey for this device. |
 | oneTimePreKeys | [bytes](#bytes) | repeated | Zero, one or more disposable preKeys for this device. |
 
@@ -446,13 +481,28 @@ latest.
 #### RequestPreKeys
 Requires anonymous connection
 
-A request to retrieve preKey information for all registered devices for the given UserID except those listed in knownDeviceIDs.
+A request to retrieve preKey information for all registered devices for the given identityKey except those listed in knownDeviceIds.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| userID | [bytes](#bytes) |  | The UserID for which to retrieve preKeys. |
-| knownDeviceIDs | [uint32](#uint32) | repeated | Devices which the client already knows about and doesn't need preKeys for. |
+| identityKey | [bytes](#bytes) |  | The identityKey for which to retrieve preKeys. |
+| knownDeviceIds | [bytes](#bytes) | repeated | Devices of this identity which the client already knows about and doesn't need preKeys for. |
+
+
+
+
+
+
+<a name="tassis.RequestUploadAuthorizations"></a>
+
+#### RequestUploadAuthorizations
+Requests attachment upload authorizations.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| numRequested | [int32](#int32) |  | the number of authorizations requested. The server may not return the number requested. |
 
 
 
@@ -465,6 +515,56 @@ A request to retrieve preKey information for all registered devices for the give
 Requires authentication
 
 Removes the recorded registration for the client's Address.
+
+
+
+
+
+
+<a name="tassis.UploadAuthorization"></a>
+
+#### UploadAuthorization
+Provides authorization to upload an attachment to cloud storage
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| uploadURL | [string](#string) |  | The URL to which to upload |
+| uploadFormData | [UploadAuthorization.UploadFormDataEntry](#tassis.UploadAuthorization.UploadFormDataEntry) | repeated | This form data needs to be included with the upload in order to authorize it |
+| authorizationExpiresAt | [int64](#int64) |  | The unix timestamp in milliseconds when this authorization expires and can no longer be used |
+| maxUploadSize | [int64](#int64) |  | The maxmimum number of bytes that are allowed to be uploaded |
+| downloadURL | [string](#string) |  | The URL from which the attachment may be downloaded once it has been uploaded |
+
+
+
+
+
+
+<a name="tassis.UploadAuthorization.UploadFormDataEntry"></a>
+
+#### UploadAuthorization.UploadFormDataEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="tassis.UploadAuthorizations"></a>
+
+#### UploadAuthorizations
+Multiple UploadAuthorizations
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| authorizations | [UploadAuthorization](#tassis.UploadAuthorization) | repeated |  |
 
 
 

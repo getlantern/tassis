@@ -29,20 +29,6 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d func(id 
 		}
 	}()
 
-	// TODO: sort out closing sequence for websocket connections
-	// defer func() {
-	// 	for _, handler := range handlers {
-	// 		for i := 0; i < 20; i++ {
-	// 			activeConnections := handler.ActiveConnections()
-	// 			if activeConnections == 0 {
-	// 				return
-	// 			}
-	// 			time.Sleep(100 * time.Millisecond)
-	// 		}
-	// 		require.True(t, handler.ActiveConnections() <= 1, "should have 2 or fewer active connections after waiting 2 seconds")
-	// 	}
-	// }()
-
 	presenceRepo := mempresence.NewRepository()
 	buildServiceAndDB := func(t *testing.T, serverID int) (service.Service, db.DB) {
 		l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -57,6 +43,7 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d func(id 
 			Broker:                     b(serverID),
 			PresenceRepo:               presenceRepo,
 			Forwarder:                  webforwarder.New(100),
+			AttachmentsManager:         testsupport.NewNoopAttachmentsManager(),
 			CheckPreKeysInterval:       testsupport.CheckPreKeysInterval,
 			LowPreKeysLimit:            testsupport.LowPreKeysLimit,
 			NumPreKeysToRequest:        testsupport.NumPreKeysToRequest,
