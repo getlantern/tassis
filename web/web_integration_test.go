@@ -43,7 +43,7 @@ func TestWebSocketClientWithRealDatabaseAndBroker(t *testing.T) {
 			Password: "", // no password set
 			DB:       id,
 		})
-		b, err := redisbroker.New(client)
+		b, err := redisbroker.New(client, 100)
 		require.NoError(t, err)
 		return b
 	})

@@ -26,6 +26,10 @@ import (
 	"github.com/getlantern/tassis/web"
 )
 
+const (
+	maxStreamLength = 100
+)
+
 var (
 	// The below environment variables are passed by Heroku if deployed there
 	publicAddr         = os.Getenv("PUBLIC_ADDR")
@@ -134,7 +138,7 @@ func main() {
 
 	client := redis.NewClient(redisOpts)
 
-	b, err := redisbroker.New(client)
+	b, err := redisbroker.New(client, maxStreamLength)
 	if err != nil {
 		log.Fatalf("unable to start redisbroker: %v", err)
 	}

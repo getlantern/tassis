@@ -40,13 +40,16 @@ var (
 
 type redisBroker struct {
 	client             *redis.Client
+	maxLen             int64
 	subscriberRequests chan *subscriberRequest
 	acks               chan *ack
 	ackScriptSHA       string
 }
 
 // New constructs a new Redis-backed Broker that connects with the given client.
-func New(client *redis.Client) (broker.Broker, error) {
+//
+// maxLen - maximum length of each subscriber's stream
+func New(client *redis.Client, maxLen int) (broker.Broker, error) {
 	ackScriptSHA, err := client.ScriptLoad(context.Background(), ackScript).Result()
 	if err != nil {
 		return nil, errors.New("unable to load ackScript: %v", err)
@@ -54,6 +57,7 @@ func New(client *redis.Client) (broker.Broker, error) {
 
 	b := &redisBroker{
 		client:             client,
+		maxLen:             int64(maxLen),
 		subscriberRequests: make(chan *subscriberRequest, 10000), // TODO: make this tunable
 		acks:               make(chan *ack, 10000),               // TODO: make this tunable
 		ackScriptSHA:       ackScriptSHA,
@@ -78,7 +82,8 @@ type publisher struct {
 func (pub *publisher) Publish(data []byte) error {
 	ctx := context.Background()
 	return pub.b.client.XAdd(ctx, &redis.XAddArgs{
-		Stream: pub.stream,
+		Stream:       pub.stream,
+		MaxLenApprox: pub.b.maxLen, // use approximate max stream length for speed
 		Values: map[string]interface{}{
 			"data": string(data),
 		},
