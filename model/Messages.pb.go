@@ -99,7 +99,7 @@ func (*Ack) Descriptor() ([]byte, []int) {
 	return file_model_Messages_proto_rawDescGZIP(), []int{0}
 }
 
-// Indicates than an error occurred processing a request.
+// Indicates that an error occurred processing a request.
 type Error struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -217,7 +217,7 @@ type Configuration struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	MaxAttachmentSize int64 `protobuf:"varint,1,opt,name=maxAttachmentSize,proto3" json:"maxAttachmentSize,omitempty"` // The maxmimum allows attachment size (encrypted size, not plaintext)
+	MaxAttachmentSize int64 `protobuf:"varint,1,opt,name=maxAttachmentSize,proto3" json:"maxAttachmentSize,omitempty"` // The maxmimum allowed attachment size (encrypted size, not plaintext)
 }
 
 func (x *Configuration) Reset() {
@@ -802,6 +802,54 @@ func (x *OutboundMessage) GetUnidentifiedSenderMessage() []byte {
 	return nil
 }
 
+// An inbound message from another client to the currently authenticated client
+type InboundMessage struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	UnidentifiedSenderMessage []byte `protobuf:"bytes,3,opt,name=unidentifiedSenderMessage,proto3" json:"unidentifiedSenderMessage,omitempty"` // A sealed sender message (opaque to tassis).
+}
+
+func (x *InboundMessage) Reset() {
+	*x = InboundMessage{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_model_Messages_proto_msgTypes[14]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *InboundMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InboundMessage) ProtoMessage() {}
+
+func (x *InboundMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_model_Messages_proto_msgTypes[14]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InboundMessage.ProtoReflect.Descriptor instead.
+func (*InboundMessage) Descriptor() ([]byte, []int) {
+	return file_model_Messages_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *InboundMessage) GetUnidentifiedSenderMessage() []byte {
+	if x != nil {
+		return x.UnidentifiedSenderMessage
+	}
+	return nil
+}
+
 // Requests attachment upload authorizations.
 type RequestUploadAuthorizations struct {
 	state         protoimpl.MessageState
@@ -814,7 +862,7 @@ type RequestUploadAuthorizations struct {
 func (x *RequestUploadAuthorizations) Reset() {
 	*x = RequestUploadAuthorizations{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_model_Messages_proto_msgTypes[14]
+		mi := &file_model_Messages_proto_msgTypes[15]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -827,7 +875,7 @@ func (x *RequestUploadAuthorizations) String() string {
 func (*RequestUploadAuthorizations) ProtoMessage() {}
 
 func (x *RequestUploadAuthorizations) ProtoReflect() protoreflect.Message {
-	mi := &file_model_Messages_proto_msgTypes[14]
+	mi := &file_model_Messages_proto_msgTypes[15]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -840,7 +888,7 @@ func (x *RequestUploadAuthorizations) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestUploadAuthorizations.ProtoReflect.Descriptor instead.
 func (*RequestUploadAuthorizations) Descriptor() ([]byte, []int) {
-	return file_model_Messages_proto_rawDescGZIP(), []int{14}
+	return file_model_Messages_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *RequestUploadAuthorizations) GetNumRequested() int32 {
@@ -866,7 +914,7 @@ type UploadAuthorization struct {
 func (x *UploadAuthorization) Reset() {
 	*x = UploadAuthorization{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_model_Messages_proto_msgTypes[15]
+		mi := &file_model_Messages_proto_msgTypes[16]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -879,7 +927,7 @@ func (x *UploadAuthorization) String() string {
 func (*UploadAuthorization) ProtoMessage() {}
 
 func (x *UploadAuthorization) ProtoReflect() protoreflect.Message {
-	mi := &file_model_Messages_proto_msgTypes[15]
+	mi := &file_model_Messages_proto_msgTypes[16]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -892,7 +940,7 @@ func (x *UploadAuthorization) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadAuthorization.ProtoReflect.Descriptor instead.
 func (*UploadAuthorization) Descriptor() ([]byte, []int) {
-	return file_model_Messages_proto_rawDescGZIP(), []int{15}
+	return file_model_Messages_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *UploadAuthorization) GetUploadURL() string {
@@ -942,7 +990,7 @@ type UploadAuthorizations struct {
 func (x *UploadAuthorizations) Reset() {
 	*x = UploadAuthorizations{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_model_Messages_proto_msgTypes[16]
+		mi := &file_model_Messages_proto_msgTypes[17]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -955,7 +1003,7 @@ func (x *UploadAuthorizations) String() string {
 func (*UploadAuthorizations) ProtoMessage() {}
 
 func (x *UploadAuthorizations) ProtoReflect() protoreflect.Message {
-	mi := &file_model_Messages_proto_msgTypes[16]
+	mi := &file_model_Messages_proto_msgTypes[17]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -968,7 +1016,7 @@ func (x *UploadAuthorizations) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadAuthorizations.ProtoReflect.Descriptor instead.
 func (*UploadAuthorizations) Descriptor() ([]byte, []int) {
-	return file_model_Messages_proto_rawDescGZIP(), []int{16}
+	return file_model_Messages_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *UploadAuthorizations) GetAuthorizations() []*UploadAuthorization {
@@ -1006,7 +1054,7 @@ type Message struct {
 func (x *Message) Reset() {
 	*x = Message{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_model_Messages_proto_msgTypes[17]
+		mi := &file_model_Messages_proto_msgTypes[18]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1019,7 +1067,7 @@ func (x *Message) String() string {
 func (*Message) ProtoMessage() {}
 
 func (x *Message) ProtoReflect() protoreflect.Message {
-	mi := &file_model_Messages_proto_msgTypes[17]
+	mi := &file_model_Messages_proto_msgTypes[18]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1032,7 +1080,7 @@ func (x *Message) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Message.ProtoReflect.Descriptor instead.
 func (*Message) Descriptor() ([]byte, []int) {
-	return file_model_Messages_proto_rawDescGZIP(), []int{17}
+	return file_model_Messages_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Message) GetSequence() uint32 {
@@ -1140,7 +1188,7 @@ func (x *Message) GetOutboundMessage() *OutboundMessage {
 	return nil
 }
 
-func (x *Message) GetInboundMessage() []byte {
+func (x *Message) GetInboundMessage() *InboundMessage {
 	if x, ok := x.GetPayload().(*Message_InboundMessage); ok {
 		return x.InboundMessage
 	}
@@ -1204,7 +1252,7 @@ type Message_OutboundMessage struct {
 }
 
 type Message_InboundMessage struct {
-	InboundMessage []byte `protobuf:"bytes,16,opt,name=inboundMessage,proto3,oneof"`
+	InboundMessage *InboundMessage `protobuf:"bytes,16,opt,name=inboundMessage,proto3,oneof"`
 }
 
 func (*Message_Ack) isMessage_Payload() {}
@@ -1249,7 +1297,7 @@ type ForwardedMessage struct {
 func (x *ForwardedMessage) Reset() {
 	*x = ForwardedMessage{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_model_Messages_proto_msgTypes[18]
+		mi := &file_model_Messages_proto_msgTypes[19]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1262,7 +1310,7 @@ func (x *ForwardedMessage) String() string {
 func (*ForwardedMessage) ProtoMessage() {}
 
 func (x *ForwardedMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_model_Messages_proto_msgTypes[18]
+	mi := &file_model_Messages_proto_msgTypes[19]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1275,7 +1323,7 @@ func (x *ForwardedMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForwardedMessage.ProtoReflect.Descriptor instead.
 func (*ForwardedMessage) Descriptor() ([]byte, []int) {
-	return file_model_Messages_proto_rawDescGZIP(), []int{18}
+	return file_model_Messages_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ForwardedMessage) GetMessage() *OutboundMessage {
@@ -1360,6 +1408,11 @@ var file_model_Messages_proto_rawDesc = []byte{
 	0x12, 0x3c, 0x0a, 0x19, 0x75, 0x6e, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65, 0x64,
 	0x53, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x02, 0x20,
 	0x01, 0x28, 0x0c, 0x52, 0x19, 0x75, 0x6e, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65,
+	0x64, 0x53, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x22, 0x4e,
+	0x0a, 0x0e, 0x49, 0x6e, 0x62, 0x6f, 0x75, 0x6e, 0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65,
+	0x12, 0x3c, 0x0a, 0x19, 0x75, 0x6e, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65, 0x64,
+	0x53, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x03, 0x20,
+	0x01, 0x28, 0x0c, 0x52, 0x19, 0x75, 0x6e, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65,
 	0x64, 0x53, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x22, 0x41,
 	0x0a, 0x1b, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x55, 0x70, 0x6c, 0x6f, 0x61, 0x64, 0x41,
 	0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x22, 0x0a,
@@ -1392,7 +1445,7 @@ var file_model_Messages_proto_rawDesc = []byte{
 	0x03, 0x28, 0x0b, 0x32, 0x1b, 0x2e, 0x74, 0x61, 0x73, 0x73, 0x69, 0x73, 0x2e, 0x55, 0x70, 0x6c,
 	0x6f, 0x61, 0x64, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e,
 	0x52, 0x0e, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73,
-	0x22, 0xe9, 0x06, 0x0a, 0x07, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x1a, 0x0a, 0x08,
+	0x22, 0x81, 0x07, 0x0a, 0x07, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x1a, 0x0a, 0x08,
 	0x73, 0x65, 0x71, 0x75, 0x65, 0x6e, 0x63, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x08,
 	0x73, 0x65, 0x71, 0x75, 0x65, 0x6e, 0x63, 0x65, 0x12, 0x1f, 0x0a, 0x03, 0x61, 0x63, 0x6b, 0x18,
 	0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x0b, 0x2e, 0x74, 0x61, 0x73, 0x73, 0x69, 0x73, 0x2e, 0x41,
@@ -1443,24 +1496,25 @@ var file_model_Messages_proto_rawDesc = []byte{
 	0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x0f, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x17, 0x2e, 0x74, 0x61,
 	0x73, 0x73, 0x69, 0x73, 0x2e, 0x4f, 0x75, 0x74, 0x62, 0x6f, 0x75, 0x6e, 0x64, 0x4d, 0x65, 0x73,
 	0x73, 0x61, 0x67, 0x65, 0x48, 0x00, 0x52, 0x0f, 0x6f, 0x75, 0x74, 0x62, 0x6f, 0x75, 0x6e, 0x64,
-	0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x28, 0x0a, 0x0e, 0x69, 0x6e, 0x62, 0x6f, 0x75,
-	0x6e, 0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x10, 0x20, 0x01, 0x28, 0x0c, 0x48,
-	0x00, 0x52, 0x0e, 0x69, 0x6e, 0x62, 0x6f, 0x75, 0x6e, 0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67,
-	0x65, 0x42, 0x09, 0x0a, 0x07, 0x70, 0x61, 0x79, 0x6c, 0x6f, 0x61, 0x64, 0x22, 0x87, 0x01, 0x0a,
-	0x10, 0x46, 0x6f, 0x72, 0x77, 0x61, 0x72, 0x64, 0x65, 0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67,
-	0x65, 0x12, 0x31, 0x0a, 0x07, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x01, 0x20, 0x01,
-	0x28, 0x0b, 0x32, 0x17, 0x2e, 0x74, 0x61, 0x73, 0x73, 0x69, 0x73, 0x2e, 0x4f, 0x75, 0x74, 0x62,
-	0x6f, 0x75, 0x6e, 0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x52, 0x07, 0x6d, 0x65, 0x73,
-	0x73, 0x61, 0x67, 0x65, 0x12, 0x20, 0x0a, 0x0b, 0x66, 0x69, 0x72, 0x73, 0x74, 0x46, 0x61, 0x69,
-	0x6c, 0x65, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0b, 0x66, 0x69, 0x72, 0x73, 0x74,
-	0x46, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x12, 0x1e, 0x0a, 0x0a, 0x6c, 0x61, 0x73, 0x74, 0x46, 0x61,
-	0x69, 0x6c, 0x65, 0x64, 0x18, 0x03, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0a, 0x6c, 0x61, 0x73, 0x74,
-	0x46, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x42, 0x41, 0x0a, 0x1b, 0x69, 0x6f, 0x2e, 0x6c, 0x61, 0x6e,
-	0x74, 0x65, 0x72, 0x6e, 0x2e, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x69, 0x6e, 0x67, 0x2e, 0x74,
-	0x61, 0x73, 0x73, 0x69, 0x73, 0x5a, 0x22, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f,
-	0x6d, 0x2f, 0x67, 0x65, 0x74, 0x6c, 0x61, 0x6e, 0x74, 0x65, 0x72, 0x6e, 0x2f, 0x74, 0x61, 0x73,
-	0x73, 0x69, 0x73, 0x2f, 0x6d, 0x6f, 0x64, 0x65, 0x6c, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f,
-	0x33,
+	0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x40, 0x0a, 0x0e, 0x69, 0x6e, 0x62, 0x6f, 0x75,
+	0x6e, 0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x10, 0x20, 0x01, 0x28, 0x0b, 0x32,
+	0x16, 0x2e, 0x74, 0x61, 0x73, 0x73, 0x69, 0x73, 0x2e, 0x49, 0x6e, 0x62, 0x6f, 0x75, 0x6e, 0x64,
+	0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x48, 0x00, 0x52, 0x0e, 0x69, 0x6e, 0x62, 0x6f, 0x75,
+	0x6e, 0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x42, 0x09, 0x0a, 0x07, 0x70, 0x61, 0x79,
+	0x6c, 0x6f, 0x61, 0x64, 0x22, 0x87, 0x01, 0x0a, 0x10, 0x46, 0x6f, 0x72, 0x77, 0x61, 0x72, 0x64,
+	0x65, 0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x31, 0x0a, 0x07, 0x6d, 0x65, 0x73,
+	0x73, 0x61, 0x67, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x17, 0x2e, 0x74, 0x61, 0x73,
+	0x73, 0x69, 0x73, 0x2e, 0x4f, 0x75, 0x74, 0x62, 0x6f, 0x75, 0x6e, 0x64, 0x4d, 0x65, 0x73, 0x73,
+	0x61, 0x67, 0x65, 0x52, 0x07, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x20, 0x0a, 0x0b,
+	0x66, 0x69, 0x72, 0x73, 0x74, 0x46, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28,
+	0x03, 0x52, 0x0b, 0x66, 0x69, 0x72, 0x73, 0x74, 0x46, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x12, 0x1e,
+	0x0a, 0x0a, 0x6c, 0x61, 0x73, 0x74, 0x46, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x18, 0x03, 0x20, 0x01,
+	0x28, 0x03, 0x52, 0x0a, 0x6c, 0x61, 0x73, 0x74, 0x46, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x42, 0x41,
+	0x0a, 0x1b, 0x69, 0x6f, 0x2e, 0x6c, 0x61, 0x6e, 0x74, 0x65, 0x72, 0x6e, 0x2e, 0x6d, 0x65, 0x73,
+	0x73, 0x61, 0x67, 0x69, 0x6e, 0x67, 0x2e, 0x74, 0x61, 0x73, 0x73, 0x69, 0x73, 0x5a, 0x22, 0x67,
+	0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x67, 0x65, 0x74, 0x6c, 0x61, 0x6e,
+	0x74, 0x65, 0x72, 0x6e, 0x2f, 0x74, 0x61, 0x73, 0x73, 0x69, 0x73, 0x2f, 0x6d, 0x6f, 0x64, 0x65,
+	0x6c, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -1475,7 +1529,7 @@ func file_model_Messages_proto_rawDescGZIP() []byte {
 	return file_model_Messages_proto_rawDescData
 }
 
-var file_model_Messages_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_model_Messages_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_model_Messages_proto_goTypes = []interface{}{
 	(*Ack)(nil),                         // 0: tassis.Ack
 	(*Error)(nil),                       // 1: tassis.Error
@@ -1491,19 +1545,20 @@ var file_model_Messages_proto_goTypes = []interface{}{
 	(*PreKeys)(nil),                     // 11: tassis.PreKeys
 	(*PreKeysLow)(nil),                  // 12: tassis.PreKeysLow
 	(*OutboundMessage)(nil),             // 13: tassis.OutboundMessage
-	(*RequestUploadAuthorizations)(nil), // 14: tassis.RequestUploadAuthorizations
-	(*UploadAuthorization)(nil),         // 15: tassis.UploadAuthorization
-	(*UploadAuthorizations)(nil),        // 16: tassis.UploadAuthorizations
-	(*Message)(nil),                     // 17: tassis.Message
-	(*ForwardedMessage)(nil),            // 18: tassis.ForwardedMessage
-	nil,                                 // 19: tassis.UploadAuthorization.UploadFormDataEntry
+	(*InboundMessage)(nil),              // 14: tassis.InboundMessage
+	(*RequestUploadAuthorizations)(nil), // 15: tassis.RequestUploadAuthorizations
+	(*UploadAuthorization)(nil),         // 16: tassis.UploadAuthorization
+	(*UploadAuthorizations)(nil),        // 17: tassis.UploadAuthorizations
+	(*Message)(nil),                     // 18: tassis.Message
+	(*ForwardedMessage)(nil),            // 19: tassis.ForwardedMessage
+	nil,                                 // 20: tassis.UploadAuthorization.UploadFormDataEntry
 }
 var file_model_Messages_proto_depIdxs = []int32{
 	2,  // 0: tassis.Login.address:type_name -> tassis.Address
 	10, // 1: tassis.PreKeys.preKeys:type_name -> tassis.PreKey
 	2,  // 2: tassis.OutboundMessage.to:type_name -> tassis.Address
-	19, // 3: tassis.UploadAuthorization.uploadFormData:type_name -> tassis.UploadAuthorization.UploadFormDataEntry
-	15, // 4: tassis.UploadAuthorizations.authorizations:type_name -> tassis.UploadAuthorization
+	20, // 3: tassis.UploadAuthorization.uploadFormData:type_name -> tassis.UploadAuthorization.UploadFormDataEntry
+	16, // 4: tassis.UploadAuthorizations.authorizations:type_name -> tassis.UploadAuthorization
 	0,  // 5: tassis.Message.ack:type_name -> tassis.Ack
 	1,  // 6: tassis.Message.error:type_name -> tassis.Error
 	3,  // 7: tassis.Message.configuration:type_name -> tassis.Configuration
@@ -1514,15 +1569,16 @@ var file_model_Messages_proto_depIdxs = []int32{
 	9,  // 12: tassis.Message.requestPreKeys:type_name -> tassis.RequestPreKeys
 	11, // 13: tassis.Message.preKeys:type_name -> tassis.PreKeys
 	12, // 14: tassis.Message.preKeysLow:type_name -> tassis.PreKeysLow
-	14, // 15: tassis.Message.requestUploadAuthorizations:type_name -> tassis.RequestUploadAuthorizations
-	16, // 16: tassis.Message.uploadAuthorizations:type_name -> tassis.UploadAuthorizations
+	15, // 15: tassis.Message.requestUploadAuthorizations:type_name -> tassis.RequestUploadAuthorizations
+	17, // 16: tassis.Message.uploadAuthorizations:type_name -> tassis.UploadAuthorizations
 	13, // 17: tassis.Message.outboundMessage:type_name -> tassis.OutboundMessage
-	13, // 18: tassis.ForwardedMessage.message:type_name -> tassis.OutboundMessage
-	19, // [19:19] is the sub-list for method output_type
-	19, // [19:19] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	14, // 18: tassis.Message.inboundMessage:type_name -> tassis.InboundMessage
+	13, // 19: tassis.ForwardedMessage.message:type_name -> tassis.OutboundMessage
+	20, // [20:20] is the sub-list for method output_type
+	20, // [20:20] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_model_Messages_proto_init() }
@@ -1700,7 +1756,7 @@ func file_model_Messages_proto_init() {
 			}
 		}
 		file_model_Messages_proto_msgTypes[14].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*RequestUploadAuthorizations); i {
+			switch v := v.(*InboundMessage); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1712,7 +1768,7 @@ func file_model_Messages_proto_init() {
 			}
 		}
 		file_model_Messages_proto_msgTypes[15].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*UploadAuthorization); i {
+			switch v := v.(*RequestUploadAuthorizations); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1724,7 +1780,7 @@ func file_model_Messages_proto_init() {
 			}
 		}
 		file_model_Messages_proto_msgTypes[16].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*UploadAuthorizations); i {
+			switch v := v.(*UploadAuthorization); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1736,7 +1792,7 @@ func file_model_Messages_proto_init() {
 			}
 		}
 		file_model_Messages_proto_msgTypes[17].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*Message); i {
+			switch v := v.(*UploadAuthorizations); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1748,6 +1804,18 @@ func file_model_Messages_proto_init() {
 			}
 		}
 		file_model_Messages_proto_msgTypes[18].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Message); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_model_Messages_proto_msgTypes[19].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*ForwardedMessage); i {
 			case 0:
 				return &v.state
@@ -1760,7 +1828,7 @@ func file_model_Messages_proto_init() {
 			}
 		}
 	}
-	file_model_Messages_proto_msgTypes[17].OneofWrappers = []interface{}{
+	file_model_Messages_proto_msgTypes[18].OneofWrappers = []interface{}{
 		(*Message_Ack)(nil),
 		(*Message_Error)(nil),
 		(*Message_Configuration)(nil),
@@ -1782,7 +1850,7 @@ func file_model_Messages_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_model_Messages_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

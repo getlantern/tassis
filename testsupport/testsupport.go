@@ -283,7 +283,7 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 		}}))
 		msg := clientB1.Receive()
 		inboundMsg := msg.GetInboundMessage()
-		require.Equal(t, "ciphertext", string(inboundMsg))
+		require.Equal(t, "ciphertext", string(inboundMsg.UnidentifiedSenderMessage))
 		clientB1.Send(mb.NewAck(msg))
 	})
 
@@ -300,10 +300,10 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 			defer clientB1Extra.Close()
 			msg := clientB1Extra.Receive()
 			inboundMsg := msg.GetInboundMessage()
-			require.Equal(t, "ciphertext2", string(inboundMsg))
+			require.Equal(t, "ciphertext2", string(inboundMsg.UnidentifiedSenderMessage))
 			msg = clientB1.Receive()
 			inboundMsg = msg.GetInboundMessage()
-			require.Equal(t, "ciphertext2", string(inboundMsg))
+			require.Equal(t, "ciphertext2", string(inboundMsg.UnidentifiedSenderMessage))
 		})
 
 		t.Run("new recipient without prior ack should receive old message, old client should receive none", func(t *testing.T) {
@@ -311,7 +311,7 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 			defer clientB1Extra.Close()
 			msg := clientB1Extra.Receive()
 			inboundMsg := msg.GetInboundMessage()
-			require.Equal(t, "ciphertext2", string(inboundMsg))
+			require.Equal(t, "ciphertext2", string(inboundMsg.UnidentifiedSenderMessage))
 			clientB1Extra.Send(mb.NewAck(msg))
 			require.Zero(t, clientB1.Drain())
 		})
@@ -368,7 +368,7 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 		require.NoError(t, presenceRepo.Announce(deviceC1Addr, origHost))
 		msg := clientC1.Receive()
 		inboundMsg := msg.GetInboundMessage()
-		require.Equal(t, "shouldbeforwarded", string(inboundMsg))
+		require.Equal(t, "shouldbeforwarded", string(inboundMsg.UnidentifiedSenderMessage))
 		clientC1.Send(mb.NewAck(msg))
 	})
 
@@ -401,7 +401,7 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 		roundTrip(t, clientC1AtServer2, register("spkC1", 34, 35, 36))
 		msg := clientC1AtServer2.Receive()
 		inboundMsg := msg.GetInboundMessage()
-		require.Equal(t, "forwarded", string(inboundMsg))
+		require.Equal(t, "forwarded", string(inboundMsg.UnidentifiedSenderMessage))
 		clientC1AtServer2.Send(mb.NewAck(msg))
 
 		// switch back to original server
@@ -420,7 +420,7 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 		presenceRepo.Announce(deviceC1Addr, origHost)
 		msg = clientC1.Receive()
 		inboundMsg = msg.GetInboundMessage()
-		require.Equal(t, "backhome", string(inboundMsg))
+		require.Equal(t, "backhome", string(inboundMsg.UnidentifiedSenderMessage))
 		clientC1.Send(mb.NewAck(msg))
 	})
 }

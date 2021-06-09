@@ -173,6 +173,7 @@ end
     - [Configuration](#tassis.Configuration)
     - [Error](#tassis.Error)
     - [ForwardedMessage](#tassis.ForwardedMessage)
+    - [InboundMessage](#tassis.InboundMessage)
     - [Login](#tassis.Login)
     - [Message](#tassis.Message)
     - [OutboundMessage](#tassis.OutboundMessage)
@@ -301,7 +302,7 @@ Provides configuration information to clients
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| maxAttachmentSize | [int64](#int64) |  | The maxmimum allows attachment size (encrypted size, not plaintext) |
+| maxAttachmentSize | [int64](#int64) |  | The maxmimum allowed attachment size (encrypted size, not plaintext) |
 
 
 
@@ -311,7 +312,7 @@ Provides configuration information to clients
 <a name="tassis.Error"></a>
 
 #### Error
-Indicates than an error occurred processing a request.
+Indicates that an error occurred processing a request.
 
 
 | Field | Type | Label | Description |
@@ -335,6 +336,21 @@ Used internally by tassis for messages that are to be forwarded to a federated t
 | message | [OutboundMessage](#tassis.OutboundMessage) |  | The message that's being forwarded |
 | firstFailed | [int64](#int64) |  | The unix timestamp in milliseconds for when the message first failed to forward |
 | lastFailed | [int64](#int64) |  | The unix timestamp in milliseconds for when the message most recently failed to forward |
+
+
+
+
+
+
+<a name="tassis.InboundMessage"></a>
+
+#### InboundMessage
+An inbound message from another client to the currently authenticated client
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| unidentifiedSenderMessage | [bytes](#bytes) |  | A sealed sender message (opaque to tassis). |
 
 
 
@@ -379,7 +395,7 @@ The envelope for all messages sent to/from clients.
 | requestUploadAuthorizations | [RequestUploadAuthorizations](#tassis.RequestUploadAuthorizations) |  |  |
 | uploadAuthorizations | [UploadAuthorizations](#tassis.UploadAuthorizations) |  |  |
 | outboundMessage | [OutboundMessage](#tassis.OutboundMessage) |  |  |
-| inboundMessage | [bytes](#bytes) |  |  |
+| inboundMessage | [InboundMessage](#tassis.InboundMessage) |  |  |
 
 
 

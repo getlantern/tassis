@@ -300,7 +300,7 @@ func (conn *clientConnection) startHandlingInbound() error {
 			case <-conn.closeCh:
 				return
 			case brokerMsg := <-ch:
-				msg := conn.mb.Build(&model.Message_InboundMessage{InboundMessage: brokerMsg.Data()})
+				msg := conn.mb.Build(&model.Message_InboundMessage{InboundMessage: &model.InboundMessage{UnidentifiedSenderMessage: brokerMsg.Data()}})
 				conn.unackedMessageMx.Lock()
 				conn.unackedMessages[msg.Sequence] = brokerMsg.Acker()
 				conn.unackedMessageMx.Unlock()
