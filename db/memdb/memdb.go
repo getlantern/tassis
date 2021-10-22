@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"sync"
 
+	"github.com/getlantern/libmessaging-go/identity"
 	"github.com/getlantern/tassis/db"
-	"github.com/getlantern/tassis/identity"
 	"github.com/getlantern/tassis/model"
 )
 

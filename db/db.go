@@ -1,7 +1,7 @@
 package db
 
 import (
-	"github.com/getlantern/tassis/identity"
+	"github.com/getlantern/libmessaging-go/identity"
 	"github.com/getlantern/tassis/model"
 )
 

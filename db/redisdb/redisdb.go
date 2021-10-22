@@ -19,9 +19,9 @@ import (
 	"github.com/getlantern/errors"
 	"github.com/getlantern/golog"
 
+	"github.com/getlantern/libmessaging-go/encoding"
+	"github.com/getlantern/libmessaging-go/identity"
 	"github.com/getlantern/tassis/db"
-	"github.com/getlantern/tassis/encoding"
-	"github.com/getlantern/tassis/identity"
 	"github.com/getlantern/tassis/model"
 )
 
