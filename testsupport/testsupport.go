@@ -6,8 +6,8 @@ import (
 	"crypto/rand"
 	"time"
 
+	"github.com/getlantern/libmessaging-go/identity"
 	"github.com/getlantern/tassis/db"
-	"github.com/getlantern/tassis/identity"
 	"github.com/getlantern/tassis/model"
 	"github.com/getlantern/tassis/presence"
 	"github.com/getlantern/tassis/service"
