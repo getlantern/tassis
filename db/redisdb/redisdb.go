@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 
@@ -27,6 +28,10 @@ import (
 
 var (
 	log = golog.LoggerFor("redisdb")
+)
+
+const (
+	queryTimeout = 10 * time.Second
 )
 
 const (
@@ -77,35 +82,68 @@ local oneTimePreKey = redis.call("lpop", oneTimePreKeysKey)
 
 return {signedPreKey, oneTimePreKey}
 `
+
+	registerShortNumberScript = `
+local identityToShortNumber = KEYS[1]
+local shortNumberToIdentity = KEYS[2]
+
+local identityKey = ARGV[1]
+local shortNumber = ARGV[2]
+
+local existingIdentityKey = redis.call("hget", shortNumberToIdentity, shortNumber)
+if existingIdentityKey then
+	if existingIdentityKey == identityKey then
+		-- already registered
+		return 0
+	elseif existingIdentityKey ~= nil and existingIdentityKey ~= '' then
+		-- short number already belongs to a different identity key
+		return existingIdentityKey
+	end
+end
+
+-- new registration
+redis.call("hset", identityToShortNumber, identityKey, shortNumber)
+redis.call("hset", shortNumberToIdentity, shortNumber, identityKey)
+return 0
+`
 )
 
 // New constructs a new Redis-backed DB that connects with the given client.
 func New(client *redis.Client) (db.DB, error) {
-	registerScriptSHA, err := client.ScriptLoad(context.Background(), registerScript).Result()
+	ctx, cancel := defaultContext()
+	defer cancel()
+
+	registerScriptSHA, err := client.ScriptLoad(ctx, registerScript).Result()
 	if err != nil {
 		return nil, errors.New("unable to load registerScript: %v", err)
 	}
-	unregisterScriptSHA, err := client.ScriptLoad(context.Background(), unregisterScript).Result()
+	unregisterScriptSHA, err := client.ScriptLoad(ctx, unregisterScript).Result()
 	if err != nil {
 		return nil, errors.New("unable to load unregisterScript: %v", err)
 	}
-	getPreKeyScriptSHA, err := client.ScriptLoad(context.Background(), getPreKeyScript).Result()
+	getPreKeyScriptSHA, err := client.ScriptLoad(ctx, getPreKeyScript).Result()
 	if err != nil {
 		return nil, errors.New("unable to load getPreKeyScript: %v", err)
 	}
+	registerShortNumberScriptSHA, err := client.ScriptLoad(ctx, registerShortNumberScript).Result()
+	if err != nil {
+		return nil, errors.New("unable to load registerShortNumberScript: %v", err)
+	}
 	return &redisDB{
-		client:              client,
-		registerScriptSHA:   registerScriptSHA,
-		unregisterScriptSHA: unregisterScriptSHA,
-		getPreKeyScriptSHA:  getPreKeyScriptSHA,
+		client:                       client,
+		registerScriptSHA:            registerScriptSHA,
+		unregisterScriptSHA:          unregisterScriptSHA,
+		getPreKeyScriptSHA:           getPreKeyScriptSHA,
+		registerShortNumberScriptSHA: registerShortNumberScriptSHA,
 	}, nil
 }
 
 type redisDB struct {
-	client              *redis.Client
-	registerScriptSHA   string
-	unregisterScriptSHA string
-	getPreKeyScriptSHA  string
+	client                       *redis.Client
+	registerScriptSHA            string
+	unregisterScriptSHA          string
+	getPreKeyScriptSHA           string
+	registerShortNumberScriptSHA string
 }
 
 func (d *redisDB) Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
@@ -113,7 +151,9 @@ func (d *redisDB) Register(identityKey identity.PublicKey, deviceId []byte, regi
 	idDevicesKey := identityDevicesKey(identityKey)
 	oneTimePreKeysKey := oneTimePreKeysKey(deviceKey)
 
-	ctx := context.Background()
+	ctx, cancel := defaultContext()
+	defer cancel()
+
 	p := d.client.TxPipeline()
 	p.EvalSha(ctx,
 		d.registerScriptSHA,
@@ -136,7 +176,10 @@ func (d *redisDB) Unregister(identityKey identity.PublicKey, deviceId []byte) er
 	idDevicesKey := identityDevicesKey(identityKey)
 	oneTimePreKeysKey := oneTimePreKeysKey(deviceKey)
 
-	return d.client.EvalSha(context.Background(),
+	ctx, cancel := defaultContext()
+	defer cancel()
+
+	return d.client.EvalSha(ctx,
 		d.unregisterScriptSHA,
 		[]string{deviceKey, idDevicesKey, oneTimePreKeysKey},
 		encoding.HumanFriendlyBase32Encoding.EncodeToString(deviceId)).Err()
@@ -145,7 +188,9 @@ func (d *redisDB) Unregister(identityKey identity.PublicKey, deviceId []byte) er
 func (d *redisDB) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, error) {
 	idDevicesKey := identityDevicesKey(request.IdentityKey)
 
-	ctx := context.Background()
+	ctx, cancel := defaultContext()
+	defer cancel()
+
 	identityDevices, err := d.client.SMembers(ctx, idDevicesKey).Result()
 	if err != nil {
 		return nil, err
@@ -205,7 +250,9 @@ func (d *redisDB) PreKeysRemaining(identityKey identity.PublicKey, deviceId []by
 	deviceKey := deviceKey(identityKey, deviceId)
 	oneTimePreKeysKey := oneTimePreKeysKey(deviceKey)
 
-	ctx := context.Background()
+	ctx, cancel := defaultContext()
+	defer cancel()
+
 	p := d.client.Pipeline()
 	deviceExistsCmd := p.Exists(ctx, deviceKey)
 	numPreKeysCmd := p.LLen(ctx, oneTimePreKeysKey)
@@ -223,7 +270,10 @@ func (d *redisDB) PreKeysRemaining(identityKey identity.PublicKey, deviceId []by
 }
 
 func (d *redisDB) AllRegisteredDevices() ([]*model.Address, error) {
-	deviceKeys, err := d.client.Keys(context.Background(), "device:*").Result()
+	ctx, cancel := defaultContext()
+	defer cancel()
+
+	deviceKeys, err := d.client.Keys(ctx, "device:*").Result()
 	if err != nil {
 		return nil, err
 	}
@@ -241,6 +291,58 @@ func (d *redisDB) AllRegisteredDevices() ([]*model.Address, error) {
 		result = append(result, &model.Address{IdentityKey: identityKey, DeviceId: deviceIdBytes})
 	}
 	return result, nil
+}
+
+func (d *redisDB) RegisterShortNumber(identityKey identity.PublicKey) (string, error) {
+	identityKeyString := identityKey.String()
+	shortNumber := identityKey.ShortNumber()
+
+	ctx, cancel := defaultContext()
+	defer cancel()
+
+	result, err := d.client.EvalSha(ctx,
+		d.registerShortNumberScriptSHA,
+		[]string{"identity->shortnumber", "shortnumber->identity"},
+		identityKeyString, shortNumber).Result()
+	if err != nil {
+		return "", err
+	}
+	if result != int64(0) {
+		return "", model.ErrShortNumberTaken
+	}
+
+	return shortNumber, nil
+}
+
+func (d *redisDB) LookupIdentityKeyByShortNumber(shortNumber string) (identity.PublicKey, error) {
+	ctx, cancel := defaultContext()
+	defer cancel()
+
+	str, err := d.client.HGet(ctx, "shortnumber->identity", shortNumber).Result()
+	if err != nil {
+		log.Errorf("error here: %v", err)
+		return nil, err
+	}
+	if str == "" {
+		return nil, model.ErrUnknownShortNumber
+	}
+	return identity.PublicKeyFromString(str)
+}
+
+func (d *redisDB) LookupShortNumberByIdentityKey(identityKey identity.PublicKey) (string, error) {
+	identityKeyString := identityKey.String()
+
+	ctx, cancel := defaultContext()
+	defer cancel()
+
+	str, err := d.client.HGet(ctx, "identity->shortnumber", identityKeyString).Result()
+	if err != nil {
+		return "", err
+	}
+	if str == "" {
+		return "", model.ErrUnknownIdentity
+	}
+	return str, nil
 }
 
 func (d *redisDB) Close() error {
@@ -261,4 +363,8 @@ func identityDevicesKey(identityKey identity.PublicKey) string {
 
 func oneTimePreKeysKey(deviceKey string) string {
 	return "otpk:" + deviceKey
+}
+
+func defaultContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), queryTimeout)
 }

@@ -12,13 +12,17 @@ import (
 
 func New() db.DB {
 	return &memdb{
-		identities: make(map[string]map[string]*model.Register),
+		identities:            make(map[string]map[string]*model.Register),
+		identityToShortNumber: make(map[string]string),
+		shortNumberToIdentity: make(map[string]string),
 	}
 }
 
 type memdb struct {
-	identities map[string]map[string]*model.Register
-	mx         sync.Mutex
+	identities            map[string]map[string]*model.Register
+	identityToShortNumber map[string]string
+	shortNumberToIdentity map[string]string
+	mx                    sync.Mutex
 }
 
 func (d *memdb) Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
@@ -136,6 +140,54 @@ func (d *memdb) AllRegisteredDevices() ([]*model.Address, error) {
 	}
 
 	return result, nil
+}
+
+func (d *memdb) RegisterShortNumber(identityKey identity.PublicKey) (string, error) {
+	identityKeyString := identityKey.String()
+	shortNumber := identityKey.ShortNumber()
+
+	d.mx.Lock()
+	defer d.mx.Unlock()
+	_existing, found := d.shortNumberToIdentity[shortNumber]
+	if found {
+		existing, err := identity.PublicKeyFromString(_existing)
+		if err != nil {
+			return "", err
+		}
+		if bytes.Equal(existing, identityKey) {
+			// already registered
+			return shortNumber, nil
+		} else {
+			// short number already belongs to a different identity key
+			return "", model.ErrShortNumberTaken
+		}
+	}
+
+	// register
+	d.identityToShortNumber[identityKeyString] = shortNumber
+	d.shortNumberToIdentity[shortNumber] = identityKeyString
+	return shortNumber, nil
+}
+
+func (d *memdb) LookupIdentityKeyByShortNumber(shortNumber string) (identity.PublicKey, error) {
+	d.mx.Lock()
+	defer d.mx.Unlock()
+	str, found := d.shortNumberToIdentity[shortNumber]
+	if !found {
+		return nil, model.ErrUnknownShortNumber
+	}
+	return identity.PublicKeyFromString(str)
+}
+
+func (d *memdb) LookupShortNumberByIdentityKey(identityKey identity.PublicKey) (string, error) {
+	identityKeyString := identityKey.String()
+	d.mx.Lock()
+	defer d.mx.Unlock()
+	str, found := d.identityToShortNumber[identityKeyString]
+	if !found {
+		return "", model.ErrUnknownIdentity
+	}
+	return str, nil
 }
 
 func (d *memdb) Close() error {

@@ -34,6 +34,8 @@ var (
 type Opts struct {
 	// The address at which this service publicly reachable. Used by other tasses to forward messages to us for consumption by our clients. Required.
 	PublicAddr string
+	// Domain for which this tassis registers short numbers
+	ShortNumberDomain string
 	// The DB to use for storing user device information and keys
 	DB db.DB
 	// The Broker to use for transmitting user messages between devices
@@ -99,6 +101,7 @@ func (opts *Opts) ApplyDefaults() {
 
 type Service struct {
 	publicAddr                 string
+	shortNumberDomain          string
 	db                         db.DB
 	broker                     broker.Broker
 	presenceRepo               presence.Repository
@@ -128,6 +131,7 @@ func New(opts *Opts) (*Service, error) {
 	}
 	srvc := &Service{
 		publicAddr:                 strings.ToLower(opts.PublicAddr),
+		shortNumberDomain:          opts.ShortNumberDomain,
 		db:                         opts.DB,
 		broker:                     opts.Broker,
 		presenceRepo:               opts.PresenceRepo,
@@ -213,12 +217,12 @@ func (srvc *Service) Connect() (service.ClientConnection, error) {
 	return conn, nil
 }
 
-func (conn *clientConnection) getIdentityKey() []byte {
+func (conn *clientConnection) getIdentityKey() identity.PublicKey {
 	identityKey := conn.identityKey.Load()
 	if identityKey == nil {
 		return nil
 	}
-	return identityKey.([]byte)
+	return identity.PublicKey(identityKey.([]byte))
 }
 
 func (conn *clientConnection) getDeviceId() []byte {
@@ -273,7 +277,7 @@ func (conn *clientConnection) warnPreKeysLowIfNecessary() {
 	for {
 		numPreKeys, err := conn.srvc.db.PreKeysRemaining(conn.getIdentityKey(), conn.getDeviceId())
 		if err == nil && numPreKeys < conn.srvc.lowPreKeysLimit {
-			conn.send(conn.mb.Build(&model.Message_PreKeysLow{&model.PreKeysLow{KeysRequested: uint32(conn.srvc.numPreKeysToRequest)}}))
+			conn.send(conn.mb.Build(&model.Message_PreKeysLow{PreKeysLow: &model.PreKeysLow{KeysRequested: uint32(conn.srvc.numPreKeysToRequest)}}))
 		}
 		select {
 		case <-time.After(conn.srvc.checkPreKeysInterval):
@@ -350,6 +354,24 @@ func (conn *clientConnection) handleOutbound() {
 			} else {
 				conn.handleRequestUploadAuthorizations(msg)
 			}
+		case *model.Message_MyShortNumber:
+			if !conn.isAuthenticated() {
+				err = model.ErrUnauthorized
+			} else {
+				conn.handleMyShortNumber(msg)
+			}
+		case *model.Message_LookupShortNumber:
+			if conn.isAuthenticated() {
+				err = model.ErrNonAnonymous
+			} else {
+				conn.handleLookupShortNumber(msg)
+			}
+		case *model.Message_LookupIdentityKey:
+			if conn.isAuthenticated() {
+				err = model.ErrNonAnonymous
+			} else {
+				conn.handleLookupIdentityKey(msg)
+			}
 		case *model.Message_OutboundMessage:
 			if conn.isAuthenticated() {
 				err = model.ErrNonAnonymous
@@ -365,8 +387,8 @@ func (conn *clientConnection) handleOutbound() {
 }
 
 func (conn *clientConnection) sendInitMessages() {
-	conn.in <- conn.mb.Build(&model.Message_AuthChallenge{&model.AuthChallenge{Nonce: conn.authNonce}})
-	conn.in <- conn.mb.Build(&model.Message_Configuration{&model.Configuration{MaxAttachmentSize: conn.srvc.attachmentsManager.MaxAttachmentSize()}})
+	conn.in <- conn.mb.Build(&model.Message_AuthChallenge{AuthChallenge: &model.AuthChallenge{Nonce: conn.authNonce}})
+	conn.in <- conn.mb.Build(&model.Message_Configuration{Configuration: &model.Configuration{MaxAttachmentSize: conn.srvc.attachmentsManager.MaxAttachmentSize()}})
 }
 
 func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
@@ -472,7 +494,7 @@ func (conn *clientConnection) handleRequestPreKeys(msg *model.Message) {
 
 	outMsg := &model.Message{
 		Sequence: msg.Sequence,
-		Payload:  &model.Message_PreKeys{&model.PreKeys{PreKeys: preKeys}},
+		Payload:  &model.Message_PreKeys{PreKeys: &model.PreKeys{PreKeys: preKeys}},
 	}
 	conn.send(outMsg)
 }
@@ -498,7 +520,66 @@ func (conn *clientConnection) handleRequestUploadAuthorizations(msg *model.Messa
 
 	outMsg := &model.Message{
 		Sequence: msg.Sequence,
-		Payload:  &model.Message_UploadAuthorizations{uploadAuthorizations},
+		Payload:  &model.Message_UploadAuthorizations{UploadAuthorizations: uploadAuthorizations},
+	}
+	conn.send(outMsg)
+}
+
+func (conn *clientConnection) handleMyShortNumber(msg *model.Message) {
+	identityKey := conn.getIdentityKey()
+	shortNumber, err := conn.srvc.db.RegisterShortNumber(identityKey)
+	if err != nil {
+		conn.error(msg, err)
+		return
+	}
+
+	outMsg := &model.Message{
+		Sequence: msg.Sequence,
+		Payload: &model.Message_ShortNumberResponse{
+			ShortNumberResponse: &model.ShortNumberResponse{
+				ShortNumber: shortNumber,
+				Domain:      conn.srvc.shortNumberDomain,
+			},
+		},
+	}
+	conn.send(outMsg)
+}
+
+func (conn *clientConnection) handleLookupShortNumber(msg *model.Message) {
+	identityKey := msg.GetLookupShortNumber().IdentityKey
+	shortNumber, err := conn.srvc.db.LookupShortNumberByIdentityKey(identityKey)
+	if err != nil {
+		conn.error(msg, err)
+		return
+	}
+
+	outMsg := &model.Message{
+		Sequence: msg.Sequence,
+		Payload: &model.Message_ShortNumberResponse{
+			ShortNumberResponse: &model.ShortNumberResponse{
+				ShortNumber: shortNumber,
+				Domain:      conn.srvc.shortNumberDomain,
+			},
+		},
+	}
+	conn.send(outMsg)
+}
+
+func (conn *clientConnection) handleLookupIdentityKey(msg *model.Message) {
+	shortNumber := msg.GetLookupIdentityKey().ShortNumber
+	identityKey, err := conn.srvc.db.LookupIdentityKeyByShortNumber(shortNumber)
+	if err != nil {
+		conn.error(msg, err)
+		return
+	}
+
+	outMsg := &model.Message{
+		Sequence: msg.Sequence,
+		Payload: &model.Message_LookupIdentityKeyResponse{
+			LookupIdentityKeyResponse: &model.LookupIdentityKeyResponse{
+				IdentityKey: identityKey,
+			},
+		},
 	}
 	conn.send(outMsg)
 }

@@ -160,6 +160,37 @@ message UploadAuthorizations {
     repeated UploadAuthorization authorizations = 1;
 }
 
+// Requires authentication
+//
+// A request to obtain a short number corresponding to the logged in IdentityKey. This will obtain the existing short number
+// for the logged in IdentityKey (if one exists) or attempt to create a new one. If it cannot create one, it will return an error.
+message MyShortNumber {}
+
+// Requires anonymous connection
+//
+// A request to look up a the short number corresponding to an IdentityKey.
+message LookupShortNumber {
+    bytes identityKey = 1; // the identity key for which to look up the short number
+}
+
+// Response to a request for a short number.
+message ShortNumberResponse {
+    string shortNumber = 1; // a short form of IdentityKey encoded in base810
+    string domain = 2; // the domain within which the short number is registered
+}
+
+// Requires anonymous connection
+//
+// A request to look up a the IdentityKey corresponding to a registered short number.
+message LookupIdentityKey {
+    string shortNumber = 1; // the short number for which to look up the full IdentityKey
+}
+
+// Response to an IdentityKey lookup.
+message LookupIdentityKeyResponse {
+    bytes identityKey = 1; // the matching IdentityKey (if one was found)
+}
+
 // The envelope for all messages sent to/from clients.
 message Message {
     uint32 sequence = 1; // the message sequence, either a unique number for request messages or the number of the request message to which a response message corresponds
@@ -178,7 +209,12 @@ message Message {
         RequestUploadAuthorizations requestUploadAuthorizations = 13;
         UploadAuthorizations        uploadAuthorizations        = 14;
         OutboundMessage             outboundMessage             = 15;
-        InboundMessage              inboundMessage              = 16; 
+        InboundMessage              inboundMessage              = 16;
+        MyShortNumber               myShortNumber               = 17;
+        LookupShortNumber           lookupShortNumber           = 18;
+        ShortNumberResponse         shortNumberResponse         = 19;
+        LookupIdentityKey           lookupIdentityKey           = 20;
+        LookupIdentityKeyResponse   lookupIdentityKeyResponse   = 21;
     }
 }
 

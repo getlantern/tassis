@@ -29,6 +29,7 @@ import (
 var (
 	// The below environment variables are passed by Heroku if deployed there
 	publicAddr         = os.Getenv("PUBLIC_ADDR")
+	shortNumberDomain  = os.Getenv("SHORT_NUMBER_DOMAIN")
 	httpPort           = os.Getenv("PORT")
 	pprofAddr          = os.Getenv("PPROF_ADDR")
 	redisURL           = os.Getenv("REDIS_URL")
@@ -149,6 +150,7 @@ func main() {
 	}
 	srvc, err := serviceimpl.New(&serviceimpl.Opts{
 		PublicAddr:           publicAddr,
+		ShortNumberDomain:    shortNumberDomain,
 		DB:                   d,
 		Broker:               b,
 		PresenceRepo:         staticpresence.NewRepository(publicAddr), // TODO: when ready to start using more than 1 tassis cluster, we'll need to replace this with a real presence implementation

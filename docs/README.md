@@ -175,7 +175,11 @@ end
     - [ForwardedMessage](#tassis.ForwardedMessage)
     - [InboundMessage](#tassis.InboundMessage)
     - [Login](#tassis.Login)
+    - [LookupIdentityKey](#tassis.LookupIdentityKey)
+    - [LookupIdentityKeyResponse](#tassis.LookupIdentityKeyResponse)
+    - [LookupShortNumber](#tassis.LookupShortNumber)
     - [Message](#tassis.Message)
+    - [MyShortNumber](#tassis.MyShortNumber)
     - [OutboundMessage](#tassis.OutboundMessage)
     - [PreKey](#tassis.PreKey)
     - [PreKeys](#tassis.PreKeys)
@@ -183,6 +187,7 @@ end
     - [Register](#tassis.Register)
     - [RequestPreKeys](#tassis.RequestPreKeys)
     - [RequestUploadAuthorizations](#tassis.RequestUploadAuthorizations)
+    - [ShortNumberResponse](#tassis.ShortNumberResponse)
     - [Unregister](#tassis.Unregister)
     - [UploadAuthorization](#tassis.UploadAuthorization)
     - [UploadAuthorization.UploadFormDataEntry](#tassis.UploadAuthorization.UploadFormDataEntry)
@@ -302,7 +307,7 @@ Provides configuration information to clients
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| maxAttachmentSize | [int64](#int64) |  | The maxmimum allowed attachment size (encrypted size, not plaintext) |
+| maxAttachmentSize | [int64](#int64) |  | The maximum allowed attachment size (encrypted size, not plaintext) |
 
 
 
@@ -373,6 +378,55 @@ Login information supplied by clients in response to an AuthChallenge.
 
 
 
+<a name="tassis.LookupIdentityKey"></a>
+
+#### LookupIdentityKey
+Requires anonymous connection
+
+A request to look up a the IdentityKey corresponding to a registered short number.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| shortNumber | [string](#string) |  | the short number for which to look up the full IdentityKey |
+
+
+
+
+
+
+<a name="tassis.LookupIdentityKeyResponse"></a>
+
+#### LookupIdentityKeyResponse
+Response to an IdentityKey lookup.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| identityKey | [bytes](#bytes) |  | the matching IdentityKey (if one was found) |
+
+
+
+
+
+
+<a name="tassis.LookupShortNumber"></a>
+
+#### LookupShortNumber
+Requires anonymous connection
+
+A request to look up a the short number corresponding to an IdentityKey.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| identityKey | [bytes](#bytes) |  | the identity key for which to look up the short number |
+
+
+
+
+
+
 <a name="tassis.Message"></a>
 
 #### Message
@@ -396,6 +450,24 @@ The envelope for all messages sent to/from clients.
 | uploadAuthorizations | [UploadAuthorizations](#tassis.UploadAuthorizations) |  |  |
 | outboundMessage | [OutboundMessage](#tassis.OutboundMessage) |  |  |
 | inboundMessage | [InboundMessage](#tassis.InboundMessage) |  |  |
+| myShortNumber | [MyShortNumber](#tassis.MyShortNumber) |  |  |
+| lookupShortNumber | [LookupShortNumber](#tassis.LookupShortNumber) |  |  |
+| shortNumberResponse | [ShortNumberResponse](#tassis.ShortNumberResponse) |  |  |
+| lookupIdentityKey | [LookupIdentityKey](#tassis.LookupIdentityKey) |  |  |
+| lookupIdentityKeyResponse | [LookupIdentityKeyResponse](#tassis.LookupIdentityKeyResponse) |  |  |
+
+
+
+
+
+
+<a name="tassis.MyShortNumber"></a>
+
+#### MyShortNumber
+Requires authentication
+
+A request to obtain a short number corresponding to the logged in IdentityKey. This will obtain the existing short number
+for the logged in IdentityKey (if one exists) or attempt to create a new one. If it cannot create one, it will return an error.
 
 
 
@@ -519,6 +591,22 @@ Requests attachment upload authorizations.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | numRequested | [int32](#int32) |  | the number of authorizations requested. The server may not return the number requested. |
+
+
+
+
+
+
+<a name="tassis.ShortNumberResponse"></a>
+
+#### ShortNumberResponse
+Response to a request for a short number.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| shortNumber | [string](#string) |  | a short form of IdentityKey encoded in base810 |
+| domain | [string](#string) |  | the domain within which the short number is registered |
 
 
 
