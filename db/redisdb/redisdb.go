@@ -83,28 +83,35 @@ local oneTimePreKey = redis.call("lpop", oneTimePreKeysKey)
 return {signedPreKey, oneTimePreKey}
 `
 
-	registerShortNumberScript = `
-local identityToShortNumber = KEYS[1]
-local shortNumberToIdentity = KEYS[2]
+	registerNumberScript = `
+local identityToNumberKey = KEYS[1]
+local numberToIdentityKey = KEYS[2]
+local numberToShortNumberKey = KEYS[3]
+local shortNumberToNumberKey = KEYS[4]
 
 local identityKey = ARGV[1]
-local shortNumber = ARGV[2]
+local newNumber = ARGV[2]
+local newShortNumber = ARGV[3]
 
-local existingIdentityKey = redis.call("hget", shortNumberToIdentity, shortNumber)
+local number = redis.call("hget", identityToNumberKey, identityKey)
+if number and number ~= nil and number ~= '' then
+	-- already registered
+	local shortNumber = redis.call("hget", numberToShortNumberKey, number)
+	return {number, shortNumber}
+end
+
+local existingIdentityKey = redis.call("hget", numberToIdentityKey, newNumber)
 if existingIdentityKey then
-	if existingIdentityKey == identityKey then
-		-- already registered
-		return 0
-	elseif existingIdentityKey ~= nil and existingIdentityKey ~= '' then
-		-- short number already belongs to a different identity key
-		return existingIdentityKey
-	end
+	-- number already belongs to a different identity key
+	return 1
 end
 
 -- new registration
-redis.call("hset", identityToShortNumber, identityKey, shortNumber)
-redis.call("hset", shortNumberToIdentity, shortNumber, identityKey)
-return 0
+redis.call("hset", identityToNumberKey, identityKey, newNumber)
+redis.call("hset", numberToIdentityKey, newNumber, identityKey)
+redis.call("hset", numberToShortNumberKey, newNumber, newShortNumber)
+redis.call("hset", shortNumberToNumberKey, newShortNumber, newNumber)
+return {newNumber, newShortNumber}
 `
 )
 
@@ -125,25 +132,25 @@ func New(client *redis.Client) (db.DB, error) {
 	if err != nil {
 		return nil, errors.New("unable to load getPreKeyScript: %v", err)
 	}
-	registerShortNumberScriptSHA, err := client.ScriptLoad(ctx, registerShortNumberScript).Result()
+	registerNumberScriptSHA, err := client.ScriptLoad(ctx, registerNumberScript).Result()
 	if err != nil {
-		return nil, errors.New("unable to load registerShortNumberScript: %v", err)
+		return nil, errors.New("unable to load registerNumberScript: %v", err)
 	}
 	return &redisDB{
-		client:                       client,
-		registerScriptSHA:            registerScriptSHA,
-		unregisterScriptSHA:          unregisterScriptSHA,
-		getPreKeyScriptSHA:           getPreKeyScriptSHA,
-		registerShortNumberScriptSHA: registerShortNumberScriptSHA,
+		client:                  client,
+		registerScriptSHA:       registerScriptSHA,
+		unregisterScriptSHA:     unregisterScriptSHA,
+		getPreKeyScriptSHA:      getPreKeyScriptSHA,
+		registerNumberScriptSHA: registerNumberScriptSHA,
 	}, nil
 }
 
 type redisDB struct {
-	client                       *redis.Client
-	registerScriptSHA            string
-	unregisterScriptSHA          string
-	getPreKeyScriptSHA           string
-	registerShortNumberScriptSHA string
+	client                  *redis.Client
+	registerScriptSHA       string
+	unregisterScriptSHA     string
+	getPreKeyScriptSHA      string
+	registerNumberScriptSHA string
 }
 
 func (d *redisDB) Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
@@ -293,56 +300,62 @@ func (d *redisDB) AllRegisteredDevices() ([]*model.Address, error) {
 	return result, nil
 }
 
-func (d *redisDB) RegisterShortNumber(identityKey identity.PublicKey) (string, error) {
+func (d *redisDB) RegisterNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error) {
 	identityKeyString := identityKey.String()
-	shortNumber := identityKey.ShortNumber()
 
 	ctx, cancel := defaultContext()
 	defer cancel()
 
 	result, err := d.client.EvalSha(ctx,
-		d.registerShortNumberScriptSHA,
-		[]string{"identity->shortnumber", "shortnumber->identity"},
-		identityKeyString, shortNumber).Result()
+		d.registerNumberScriptSHA,
+		[]string{"identity->number", "number->identity", "number->shortnumber", "shortnumber->number"},
+		identityKeyString, newNumber, newShortNumber).Result()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	if result != int64(0) {
-		return "", model.ErrShortNumberTaken
+	if result == int64(1) {
+		return "", "", model.ErrNumberTaken
 	}
 
-	return shortNumber, nil
+	results := result.([]interface{})
+	return results[0].(string), results[1].(string), nil
 }
 
-func (d *redisDB) LookupIdentityKeyByShortNumber(shortNumber string) (identity.PublicKey, error) {
+func (d *redisDB) FindNumberByShortNumber(shortNumber string) (string, error) {
 	ctx, cancel := defaultContext()
 	defer cancel()
 
-	str, err := d.client.HGet(ctx, "shortnumber->identity", shortNumber).Result()
+	number, err := d.client.HGet(ctx, "shortnumber->number", shortNumber).Result()
 	if err != nil {
 		log.Errorf("error here: %v", err)
-		return nil, err
+		return "", err
 	}
-	if str == "" {
-		return nil, model.ErrUnknownShortNumber
+	if number == "" {
+		return "", model.ErrUnknownShortNumber
 	}
-	return identity.PublicKeyFromString(str)
+	return number, nil
 }
 
-func (d *redisDB) LookupShortNumberByIdentityKey(identityKey identity.PublicKey) (string, error) {
+func (d *redisDB) FindNumberByIdentityKey(identityKey identity.PublicKey) (string, string, error) {
 	identityKeyString := identityKey.String()
 
 	ctx, cancel := defaultContext()
 	defer cancel()
 
-	str, err := d.client.HGet(ctx, "identity->shortnumber", identityKeyString).Result()
+	number, err := d.client.HGet(ctx, "identity->number", identityKeyString).Result()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	if str == "" {
-		return "", model.ErrUnknownIdentity
+	if number == "" {
+		return "", "", model.ErrUnknownIdentity
 	}
-	return str, nil
+
+	shortNumber, err := d.client.HGet(ctx, "number->shortnumber", number).Result()
+	if err != nil {
+		return "", "", err
+	}
+
+	return number, shortNumber, nil
 }
 
 func (d *redisDB) Close() error {

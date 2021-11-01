@@ -25,7 +25,7 @@ func TestServiceInMemory(t *testing.T) {
 
 		srvc, err := New(&Opts{
 			PublicAddr:                 fmt.Sprintf("localhost:%d", serverID),
-			ShortNumberDomain:          testsupport.ShortNumberDomain,
+			NumberDomain:               testsupport.NumberDomain,
 			DB:                         database,
 			Broker:                     membroker.New(),
 			PresenceRepo:               presenceRepo,

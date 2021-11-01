@@ -27,7 +27,7 @@ const (
 	ForwardingTimeout                    = 2000 * time.Millisecond
 	MinForwardingRetryInterval           = 200 * time.Millisecond
 	UserTransferInterval                 = 100 * time.Millisecond
-	ShortNumberDomain                    = "lantern.io"
+	NumberDomain                         = "lantern.io"
 
 	server1 = 1
 	server2 = 2
@@ -97,23 +97,14 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 		return client, msg
 	}
 
-	requestMyShortNumber := func(t *testing.T, client service.ClientConnection, identityKey identity.PublicKey) {
-		request := mb.Build(
-			&model.Message_MyShortNumber{
-				MyShortNumber: &model.MyShortNumber{},
-			})
-		client.Send(request)
-		response := client.Receive()
-		require.Equal(t, identityKey.ShortNumber(), response.GetShortNumberResponse().ShortNumber)
-		require.Equal(t, ShortNumberDomain, response.GetShortNumberResponse().Domain)
-	}
-
 	// login logs a client in
 	login := func(t *testing.T, serverID int, identityKey identity.PublicKey, deviceId []byte, privateKey PrivateKey) service.ClientConnection {
 		client, msg := doLogin(t, serverID, identityKey, deviceId, privateKey)
-		ack := client.Receive()
-		require.Equal(t, msg.Sequence, ack.Sequence)
-		requestMyShortNumber(t, client, identityKey)
+		number := client.Receive()
+		require.Equal(t, msg.Sequence, number.Sequence)
+		require.Equal(t, identityKey.Number(), number.GetNumber().Number)
+		require.Equal(t, identityKey.Number()[:12], number.GetNumber().ShortNumber)
+		require.Equal(t, NumberDomain, number.GetNumber().Domain)
 		return client
 	}
 
@@ -200,30 +191,31 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 		roundTrip(t, clientB2, register("spkB2", 41, 42, 43))
 	})
 
-	t.Run("look up identity key for another user using their short number", func(t *testing.T) {
-		shortNumber := userA.ShortNumber()
+	t.Run("look up a number for another user using their short number", func(t *testing.T) {
+		shortNumber := userA.Number()[:12]
 		request := mb.Build(
-			&model.Message_LookupIdentityKey{
-				LookupIdentityKey: &model.LookupIdentityKey{
+			&model.Message_FindNumberByShortNumber{
+				FindNumberByShortNumber: &model.FindNumberByShortNumber{
 					ShortNumber: shortNumber,
 				},
 			})
 		clientB1Anonymous.Send(request)
-		rtUserA := clientB1Anonymous.Receive().GetLookupIdentityKeyResponse().IdentityKey
-		require.EqualValues(t, userA, rtUserA)
+		number := clientB1Anonymous.Receive().GetNumber().Number
+		require.EqualValues(t, userA.Number(), number)
 	})
 
 	t.Run("look up short number for another user", func(t *testing.T) {
 		request := mb.Build(
-			&model.Message_LookupShortNumber{
-				LookupShortNumber: &model.LookupShortNumber{
+			&model.Message_FindNumberByIdentityKey{
+				FindNumberByIdentityKey: &model.FindNumberByIdentityKey{
 					IdentityKey: userA,
 				},
 			})
 		clientB1Anonymous.Send(request)
 		response := clientB1Anonymous.Receive()
-		require.EqualValues(t, userA.ShortNumber(), response.GetShortNumberResponse().ShortNumber)
-		require.Equal(t, ShortNumberDomain, response.GetShortNumberResponse().Domain)
+		require.Equal(t, userA.Number(), response.GetNumber().Number)
+		require.Equal(t, userA.Number()[:12], response.GetNumber().ShortNumber)
+		require.Equal(t, NumberDomain, response.GetNumber().Domain)
 	})
 
 	t.Run("request a preKey, pretending that we already know about one of the user's devices", func(t *testing.T) {

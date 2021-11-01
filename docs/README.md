@@ -172,14 +172,13 @@ end
     - [AuthResponse](#tassis.AuthResponse)
     - [Configuration](#tassis.Configuration)
     - [Error](#tassis.Error)
+    - [FindNumberByIdentityKey](#tassis.FindNumberByIdentityKey)
+    - [FindNumberByShortNumber](#tassis.FindNumberByShortNumber)
     - [ForwardedMessage](#tassis.ForwardedMessage)
     - [InboundMessage](#tassis.InboundMessage)
     - [Login](#tassis.Login)
-    - [LookupIdentityKey](#tassis.LookupIdentityKey)
-    - [LookupIdentityKeyResponse](#tassis.LookupIdentityKeyResponse)
-    - [LookupShortNumber](#tassis.LookupShortNumber)
     - [Message](#tassis.Message)
-    - [MyShortNumber](#tassis.MyShortNumber)
+    - [Number](#tassis.Number)
     - [OutboundMessage](#tassis.OutboundMessage)
     - [PreKey](#tassis.PreKey)
     - [PreKeys](#tassis.PreKeys)
@@ -187,7 +186,6 @@ end
     - [Register](#tassis.Register)
     - [RequestPreKeys](#tassis.RequestPreKeys)
     - [RequestUploadAuthorizations](#tassis.RequestUploadAuthorizations)
-    - [ShortNumberResponse](#tassis.ShortNumberResponse)
     - [Unregister](#tassis.Unregister)
     - [UploadAuthorization](#tassis.UploadAuthorization)
     - [UploadAuthorization.UploadFormDataEntry](#tassis.UploadAuthorization.UploadFormDataEntry)
@@ -217,7 +215,9 @@ management and receiving messages from other identities.
 Authentication is performed using a challenge-response pattern in which the server sends
 an authentication challenge to the client and the client responds with a signed authentication
 response identifying its identityKey and deviceId. On anonymous connections, clients simply ignore the
-authentication challenge.
+authentication challenge. Successful authentications are acknowledged with a Number that gives information
+about the IdentityKey number under which the authenticated user is registered. This number is constant over
+time.
 
 Messages sent from clients to servers follow a request/response pattern. The server will always
 respond to these with either an Ack or a typed response. In the event of an error, it will respond
@@ -330,6 +330,40 @@ Indicates that an error occurred processing a request.
 
 
 
+<a name="tassis.FindNumberByIdentityKey"></a>
+
+#### FindNumberByIdentityKey
+Requires anonymous connection
+
+A request to look up a number corresponding to an IdentityKey.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| identityKey | [bytes](#bytes) |  | the identity key for which to look up the number |
+
+
+
+
+
+
+<a name="tassis.FindNumberByShortNumber"></a>
+
+#### FindNumberByShortNumber
+Requires anonymous connection
+
+A request to look up a number corresponding to a short number.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| shortNumber | [string](#string) |  | the short number for which to look up the number |
+
+
+
+
+
+
 <a name="tassis.ForwardedMessage"></a>
 
 #### ForwardedMessage
@@ -378,55 +412,6 @@ Login information supplied by clients in response to an AuthChallenge.
 
 
 
-<a name="tassis.LookupIdentityKey"></a>
-
-#### LookupIdentityKey
-Requires anonymous connection
-
-A request to look up a the IdentityKey corresponding to a registered short number.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| shortNumber | [string](#string) |  | the short number for which to look up the full IdentityKey |
-
-
-
-
-
-
-<a name="tassis.LookupIdentityKeyResponse"></a>
-
-#### LookupIdentityKeyResponse
-Response to an IdentityKey lookup.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| identityKey | [bytes](#bytes) |  | the matching IdentityKey (if one was found) |
-
-
-
-
-
-
-<a name="tassis.LookupShortNumber"></a>
-
-#### LookupShortNumber
-Requires anonymous connection
-
-A request to look up a the short number corresponding to an IdentityKey.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| identityKey | [bytes](#bytes) |  | the identity key for which to look up the short number |
-
-
-
-
-
-
 <a name="tassis.Message"></a>
 
 #### Message
@@ -450,24 +435,26 @@ The envelope for all messages sent to/from clients.
 | uploadAuthorizations | [UploadAuthorizations](#tassis.UploadAuthorizations) |  |  |
 | outboundMessage | [OutboundMessage](#tassis.OutboundMessage) |  |  |
 | inboundMessage | [InboundMessage](#tassis.InboundMessage) |  |  |
-| myShortNumber | [MyShortNumber](#tassis.MyShortNumber) |  |  |
-| lookupShortNumber | [LookupShortNumber](#tassis.LookupShortNumber) |  |  |
-| shortNumberResponse | [ShortNumberResponse](#tassis.ShortNumberResponse) |  |  |
-| lookupIdentityKey | [LookupIdentityKey](#tassis.LookupIdentityKey) |  |  |
-| lookupIdentityKeyResponse | [LookupIdentityKeyResponse](#tassis.LookupIdentityKeyResponse) |  |  |
+| findNumberByShortNumber | [FindNumberByShortNumber](#tassis.FindNumberByShortNumber) |  |  |
+| findNumberByIdentityKey | [FindNumberByIdentityKey](#tassis.FindNumberByIdentityKey) |  |  |
+| number | [Number](#tassis.Number) |  |  |
 
 
 
 
 
 
-<a name="tassis.MyShortNumber"></a>
+<a name="tassis.Number"></a>
 
-#### MyShortNumber
-Requires authentication
+#### Number
+A number representing the IdentityKey in this system.
 
-A request to obtain a short number corresponding to the logged in IdentityKey. This will obtain the existing short number
-for the logged in IdentityKey (if one exists) or attempt to create a new one. If it cannot create one, it will return an error.
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| number | [string](#string) |  | a form of IdentityKey that looks like a phone number |
+| shortNumber | [string](#string) |  | short version of the number |
+| domain | [string](#string) |  | the domain within which the short number is registered |
 
 
 
@@ -591,22 +578,6 @@ Requests attachment upload authorizations.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | numRequested | [int32](#int32) |  | the number of authorizations requested. The server may not return the number requested. |
-
-
-
-
-
-
-<a name="tassis.ShortNumberResponse"></a>
-
-#### ShortNumberResponse
-Response to a request for a short number.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| shortNumber | [string](#string) |  | a short form of IdentityKey encoded in base810 |
-| domain | [string](#string) |  | the domain within which the short number is registered |
 
 
 

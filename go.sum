@@ -30,6 +30,12 @@ github.com/getlantern/libmessaging-go v0.0.0-20211022190805-a5920ae21896 h1:4M4x
 github.com/getlantern/libmessaging-go v0.0.0-20211022190805-a5920ae21896/go.mod h1:ST0Ot/T3jnZnF5hKHQK2OtItuxFYwsecV1nIK+nM/2g=
 github.com/getlantern/libmessaging-go v0.0.0-20211031042100-352936665416 h1:mnJoKPbFS5SS8tQUxuQUqcpA58FKNOZtN5PS68IGXkE=
 github.com/getlantern/libmessaging-go v0.0.0-20211031042100-352936665416/go.mod h1:MIUYQ3VLVjsX0lBsHBq2yIxkRFWLdEv4v8TtshcG3hg=
+github.com/getlantern/libmessaging-go v0.0.0-20211101153521-44feebfd249b h1:5sFmCwnCJvvJS06n27o5MYP+KXyX7Q/FjjoQTbQsNZs=
+github.com/getlantern/libmessaging-go v0.0.0-20211101153521-44feebfd249b/go.mod h1:MIUYQ3VLVjsX0lBsHBq2yIxkRFWLdEv4v8TtshcG3hg=
+github.com/getlantern/libmessaging-go v0.0.0-20211101153925-87ed4a182e18 h1:YK3FPRFRwl952CDadFFkJqsr9TPuIqOPAEwKdGHziCA=
+github.com/getlantern/libmessaging-go v0.0.0-20211101153925-87ed4a182e18/go.mod h1:MIUYQ3VLVjsX0lBsHBq2yIxkRFWLdEv4v8TtshcG3hg=
+github.com/getlantern/libmessaging-go v0.0.0-20211102124917-057375a3d4f6 h1:LZLhzzdC057DyL0lud0DUMbNEq6CB8qLq0bIh/00R5c=
+github.com/getlantern/libmessaging-go v0.0.0-20211102124917-057375a3d4f6/go.mod h1:MIUYQ3VLVjsX0lBsHBq2yIxkRFWLdEv4v8TtshcG3hg=
 github.com/getlantern/ops v0.0.0-20190325191751-d70cb0d6f85f/go.mod h1:D5ao98qkA6pxftxoqzibIBBrLSUli+kYnJqrgBf9cIA=
 github.com/getlantern/ops v0.0.0-20200403153110-8476b16edcd6 h1:QthAQCekS1YOeYWSvoHI6ZatlG4B+GBDLxV/2ZkBsTA=
 github.com/getlantern/ops v0.0.0-20200403153110-8476b16edcd6/go.mod h1:D5ao98qkA6pxftxoqzibIBBrLSUli+kYnJqrgBf9cIA=

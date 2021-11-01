@@ -3,6 +3,7 @@ package serviceimpl
 import (
 	"bytes"
 	"crypto/rand"
+	gerrors "errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -35,7 +36,7 @@ type Opts struct {
 	// The address at which this service publicly reachable. Used by other tasses to forward messages to us for consumption by our clients. Required.
 	PublicAddr string
 	// Domain for which this tassis registers short numbers
-	ShortNumberDomain string
+	NumberDomain string
 	// The DB to use for storing user device information and keys
 	DB db.DB
 	// The Broker to use for transmitting user messages between devices
@@ -101,7 +102,7 @@ func (opts *Opts) ApplyDefaults() {
 
 type Service struct {
 	publicAddr                 string
-	shortNumberDomain          string
+	numberDomain               string
 	db                         db.DB
 	broker                     broker.Broker
 	presenceRepo               presence.Repository
@@ -131,7 +132,7 @@ func New(opts *Opts) (*Service, error) {
 	}
 	srvc := &Service{
 		publicAddr:                 strings.ToLower(opts.PublicAddr),
-		shortNumberDomain:          opts.ShortNumberDomain,
+		numberDomain:               opts.NumberDomain,
 		db:                         opts.DB,
 		broker:                     opts.Broker,
 		presenceRepo:               opts.PresenceRepo,
@@ -354,23 +355,17 @@ func (conn *clientConnection) handleOutbound() {
 			} else {
 				conn.handleRequestUploadAuthorizations(msg)
 			}
-		case *model.Message_MyShortNumber:
-			if !conn.isAuthenticated() {
-				err = model.ErrUnauthorized
-			} else {
-				conn.handleMyShortNumber(msg)
-			}
-		case *model.Message_LookupShortNumber:
+		case *model.Message_FindNumberByShortNumber:
 			if conn.isAuthenticated() {
 				err = model.ErrNonAnonymous
 			} else {
-				conn.handleLookupShortNumber(msg)
+				conn.handleFindNumberByShortNumber(msg)
 			}
-		case *model.Message_LookupIdentityKey:
+		case *model.Message_FindNumberByIdentityKey:
 			if conn.isAuthenticated() {
 				err = model.ErrNonAnonymous
 			} else {
-				conn.handleLookupIdentityKey(msg)
+				conn.handleFindNumberByIdentityKey(msg)
 			}
 		case *model.Message_OutboundMessage:
 			if conn.isAuthenticated() {
@@ -405,19 +400,28 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	// verify nonce
 	if !bytes.Equal(conn.authNonce, login.Nonce) {
 		conn.error(msg, model.ErrUnauthorized)
+		conn.Close()
 		return
 	}
 
 	// verify signature
 	address := login.Address
-	publicKey := identity.PublicKey(address.IdentityKey)
-	if !publicKey.Verify(authResponse.Login, authResponse.Signature) {
+	identityKey := identity.PublicKey(address.IdentityKey)
+	if !identityKey.Verify(authResponse.Login, authResponse.Signature) {
 		conn.error(msg, model.ErrUnauthorized)
+		conn.Close()
 		return
 	}
 
 	conn.identityKey.Store(address.IdentityKey)
 	conn.deviceId.Store(address.DeviceId)
+
+	// get the number
+	number, shortNumber, err := conn.getNumber()
+	if err != nil {
+		conn.error(msg, err)
+		conn.Close()
+	}
 
 	err = conn.startHandlingInbound()
 	if err != nil {
@@ -429,7 +433,53 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 		go conn.warnPreKeysLowIfNecessary()
 	}
 
-	conn.ack(msg)
+	// Send back a Number with information about our number
+	outMsg := &model.Message{
+		Sequence: msg.Sequence,
+		Payload: &model.Message_Number{
+			Number: &model.Number{
+				Number:      number,
+				ShortNumber: shortNumber,
+				Domain:      conn.srvc.numberDomain,
+			},
+		},
+	}
+	conn.send(outMsg)
+}
+
+func (conn *clientConnection) getNumber() (string, string, error) {
+	identityKey := conn.getIdentityKey()
+	preferredNumber := identityKey.Number()
+	iter := 0
+	for {
+		newNumber := preferredNumber
+		newNumberTail := newNumber[12:]
+		newShortNumber := newNumber[:12]
+		for i := 0; i < iter; i++ {
+			// try adding some 5's to the number to find a unique one (5s are ignored when parsing numbers)
+			newShortNumber = "5" + newShortNumber
+			newNumberTail = "5" + newNumberTail
+		}
+		newNumber = fmt.Sprintf("%s%s", newShortNumber, newNumberTail)
+		lastChance := false
+		if len(newShortNumber) >= len(preferredNumber) {
+			// we've gotten to the point where the short number isn't any shorter than the whole number, so just
+			// use the whole number
+			newNumber = preferredNumber
+			newShortNumber = preferredNumber
+			lastChance = true
+		}
+		number, shortNumber, err := conn.srvc.db.RegisterNumber(identityKey, newNumber, newShortNumber)
+		if err == nil {
+			return number, shortNumber, nil
+		}
+		if gerrors.Is(err, model.ErrNumberTaken) && !lastChance {
+			// this number is taken, try again with a different version of number
+			iter++
+			continue
+		}
+		return "", "", err
+	}
 }
 
 func (conn *clientConnection) handleACK(msg *model.Message) {
@@ -525,9 +575,9 @@ func (conn *clientConnection) handleRequestUploadAuthorizations(msg *model.Messa
 	conn.send(outMsg)
 }
 
-func (conn *clientConnection) handleMyShortNumber(msg *model.Message) {
-	identityKey := conn.getIdentityKey()
-	shortNumber, err := conn.srvc.db.RegisterShortNumber(identityKey)
+func (conn *clientConnection) handleFindNumberByShortNumber(msg *model.Message) {
+	shortNumber := msg.GetFindNumberByShortNumber().ShortNumber
+	number, err := conn.srvc.db.FindNumberByShortNumber(shortNumber)
 	if err != nil {
 		conn.error(msg, err)
 		return
@@ -535,19 +585,20 @@ func (conn *clientConnection) handleMyShortNumber(msg *model.Message) {
 
 	outMsg := &model.Message{
 		Sequence: msg.Sequence,
-		Payload: &model.Message_ShortNumberResponse{
-			ShortNumberResponse: &model.ShortNumberResponse{
+		Payload: &model.Message_Number{
+			Number: &model.Number{
+				Number:      number,
 				ShortNumber: shortNumber,
-				Domain:      conn.srvc.shortNumberDomain,
+				Domain:      conn.srvc.numberDomain,
 			},
 		},
 	}
 	conn.send(outMsg)
 }
 
-func (conn *clientConnection) handleLookupShortNumber(msg *model.Message) {
-	identityKey := msg.GetLookupShortNumber().IdentityKey
-	shortNumber, err := conn.srvc.db.LookupShortNumberByIdentityKey(identityKey)
+func (conn *clientConnection) handleFindNumberByIdentityKey(msg *model.Message) {
+	identityKey := msg.GetFindNumberByIdentityKey().IdentityKey
+	number, shortNumber, err := conn.srvc.db.FindNumberByIdentityKey(identityKey)
 	if err != nil {
 		conn.error(msg, err)
 		return
@@ -555,29 +606,11 @@ func (conn *clientConnection) handleLookupShortNumber(msg *model.Message) {
 
 	outMsg := &model.Message{
 		Sequence: msg.Sequence,
-		Payload: &model.Message_ShortNumberResponse{
-			ShortNumberResponse: &model.ShortNumberResponse{
+		Payload: &model.Message_Number{
+			Number: &model.Number{
+				Number:      number,
 				ShortNumber: shortNumber,
-				Domain:      conn.srvc.shortNumberDomain,
-			},
-		},
-	}
-	conn.send(outMsg)
-}
-
-func (conn *clientConnection) handleLookupIdentityKey(msg *model.Message) {
-	shortNumber := msg.GetLookupIdentityKey().ShortNumber
-	identityKey, err := conn.srvc.db.LookupIdentityKeyByShortNumber(shortNumber)
-	if err != nil {
-		conn.error(msg, err)
-		return
-	}
-
-	outMsg := &model.Message{
-		Sequence: msg.Sequence,
-		Payload: &model.Message_LookupIdentityKeyResponse{
-			LookupIdentityKeyResponse: &model.LookupIdentityKeyResponse{
-				IdentityKey: identityKey,
+				Domain:      conn.srvc.numberDomain,
 			},
 		},
 	}

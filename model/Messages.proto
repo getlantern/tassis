@@ -15,7 +15,9 @@
  * Authentication is performed using a challenge-response pattern in which the server sends
  * an authentication challenge to the client and the client responds with a signed authentication
  * response identifying its identityKey and deviceId. On anonymous connections, clients simply ignore the
- * authentication challenge.
+ * authentication challenge. Successful authentications are acknowledged with a Number that gives information
+ * about the IdentityKey number under which the authenticated user is registered. This number is constant over
+ * time.
  *
  * Messages sent from clients to servers follow a request/response pattern. The server will always
  * respond to these with either an Ack or a typed response. In the event of an error, it will respond
@@ -160,35 +162,25 @@ message UploadAuthorizations {
     repeated UploadAuthorization authorizations = 1;
 }
 
-// Requires authentication
-//
-// A request to obtain a short number corresponding to the logged in IdentityKey. This will obtain the existing short number
-// for the logged in IdentityKey (if one exists) or attempt to create a new one. If it cannot create one, it will return an error.
-message MyShortNumber {}
-
 // Requires anonymous connection
 //
-// A request to look up a the short number corresponding to an IdentityKey.
-message LookupShortNumber {
-    bytes identityKey = 1; // the identity key for which to look up the short number
-}
-
-// Response to a request for a short number.
-message ShortNumberResponse {
-    string shortNumber = 1; // a short form of IdentityKey encoded in base810
-    string domain = 2; // the domain within which the short number is registered
+// A request to look up a number corresponding to a short number.
+message FindNumberByShortNumber {
+    string shortNumber = 1; // the short number for which to look up the number
 }
 
 // Requires anonymous connection
 //
-// A request to look up a the IdentityKey corresponding to a registered short number.
-message LookupIdentityKey {
-    string shortNumber = 1; // the short number for which to look up the full IdentityKey
+// A request to look up a number corresponding to an IdentityKey.
+message FindNumberByIdentityKey {
+    bytes identityKey = 1; // the identity key for which to look up the number
 }
 
-// Response to an IdentityKey lookup.
-message LookupIdentityKeyResponse {
-    bytes identityKey = 1; // the matching IdentityKey (if one was found)
+// A number representing the IdentityKey in this system.
+message Number {
+    string number = 1; // a form of IdentityKey that looks like a phone number
+    string shortNumber = 2; // short version of the number
+    string domain = 3; // the domain within which the short number is registered
 }
 
 // The envelope for all messages sent to/from clients.
@@ -210,11 +202,9 @@ message Message {
         UploadAuthorizations        uploadAuthorizations        = 14;
         OutboundMessage             outboundMessage             = 15;
         InboundMessage              inboundMessage              = 16;
-        MyShortNumber               myShortNumber               = 17;
-        LookupShortNumber           lookupShortNumber           = 18;
-        ShortNumberResponse         shortNumberResponse         = 19;
-        LookupIdentityKey           lookupIdentityKey           = 20;
-        LookupIdentityKeyResponse   lookupIdentityKeyResponse   = 21;
+        FindNumberByShortNumber     findNumberByShortNumber     = 17;
+        FindNumberByIdentityKey     findNumberByIdentityKey     = 18;
+        Number                      number                      = 19;
     }
 }
 

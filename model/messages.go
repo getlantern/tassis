@@ -25,8 +25,8 @@ var (
 		Name: "unnkown_short_number",
 	}
 
-	ErrShortNumberTaken = &Error{
-		Name: "short_number_taken",
+	ErrNumberTaken = &Error{
+		Name: "number_taken",
 	}
 
 	ErrUnknownDevice = &Error{

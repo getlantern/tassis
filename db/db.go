@@ -19,11 +19,11 @@ type DB interface {
 
 	AllRegisteredDevices() ([]*model.Address, error)
 
-	RegisterShortNumber(identityKey identity.PublicKey) (string, error)
+	RegisterNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error)
 
-	LookupIdentityKeyByShortNumber(shortNumber string) (identity.PublicKey, error)
+	FindNumberByShortNumber(shortNumber string) (string, error)
 
-	LookupShortNumberByIdentityKey(identityKey identity.PublicKey) (string, error)
+	FindNumberByIdentityKey(identityKey identity.PublicKey) (string, string, error)
 
 	Close() error
 }

@@ -12,17 +12,21 @@ import (
 
 func New() db.DB {
 	return &memdb{
-		identities:            make(map[string]map[string]*model.Register),
-		identityToShortNumber: make(map[string]string),
-		shortNumberToIdentity: make(map[string]string),
+		identities:          make(map[string]map[string]*model.Register),
+		identityKeyToNumber: make(map[string]string),
+		numberToIdentityKey: make(map[string]string),
+		numberToShortNumber: make(map[string]string),
+		shortNumberToNumber: make(map[string]string),
 	}
 }
 
 type memdb struct {
-	identities            map[string]map[string]*model.Register
-	identityToShortNumber map[string]string
-	shortNumberToIdentity map[string]string
-	mx                    sync.Mutex
+	identities          map[string]map[string]*model.Register
+	identityKeyToNumber map[string]string
+	numberToIdentityKey map[string]string
+	numberToShortNumber map[string]string
+	shortNumberToNumber map[string]string
+	mx                  sync.Mutex
 }
 
 func (d *memdb) Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
@@ -142,52 +146,52 @@ func (d *memdb) AllRegisteredDevices() ([]*model.Address, error) {
 	return result, nil
 }
 
-func (d *memdb) RegisterShortNumber(identityKey identity.PublicKey) (string, error) {
+func (d *memdb) RegisterNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error) {
 	identityKeyString := identityKey.String()
-	shortNumber := identityKey.ShortNumber()
 
 	d.mx.Lock()
 	defer d.mx.Unlock()
-	_existing, found := d.shortNumberToIdentity[shortNumber]
+
+	number, found := d.identityKeyToNumber[identityKeyString]
 	if found {
-		existing, err := identity.PublicKeyFromString(_existing)
-		if err != nil {
-			return "", err
-		}
-		if bytes.Equal(existing, identityKey) {
-			// already registered
-			return shortNumber, nil
-		} else {
-			// short number already belongs to a different identity key
-			return "", model.ErrShortNumberTaken
-		}
+		// already registered
+		return number, d.numberToShortNumber[number], nil
+	}
+
+	_, numberTaken := d.numberToIdentityKey[newNumber]
+	if numberTaken {
+		// number already belongs to a different identity key
+		return "", "", model.ErrNumberTaken
 	}
 
 	// register
-	d.identityToShortNumber[identityKeyString] = shortNumber
-	d.shortNumberToIdentity[shortNumber] = identityKeyString
-	return shortNumber, nil
+	d.identityKeyToNumber[identityKeyString] = newNumber
+	d.numberToIdentityKey[newNumber] = identityKeyString
+	d.numberToShortNumber[newNumber] = newShortNumber
+	d.shortNumberToNumber[newShortNumber] = newNumber
+	return newNumber, newShortNumber, nil
 }
 
-func (d *memdb) LookupIdentityKeyByShortNumber(shortNumber string) (identity.PublicKey, error) {
+func (d *memdb) FindNumberByShortNumber(shortNumber string) (string, error) {
 	d.mx.Lock()
 	defer d.mx.Unlock()
-	str, found := d.shortNumberToIdentity[shortNumber]
+	number, found := d.shortNumberToNumber[shortNumber]
 	if !found {
-		return nil, model.ErrUnknownShortNumber
+		return "", model.ErrUnknownShortNumber
 	}
-	return identity.PublicKeyFromString(str)
+	return number, nil
 }
 
-func (d *memdb) LookupShortNumberByIdentityKey(identityKey identity.PublicKey) (string, error) {
+func (d *memdb) FindNumberByIdentityKey(identityKey identity.PublicKey) (string, string, error) {
 	identityKeyString := identityKey.String()
 	d.mx.Lock()
 	defer d.mx.Unlock()
-	str, found := d.identityToShortNumber[identityKeyString]
+	number, found := d.identityKeyToNumber[identityKeyString]
 	if !found {
-		return "", model.ErrUnknownIdentity
+		return "", "", model.ErrUnknownIdentity
 	}
-	return str, nil
+	shortNumber := d.numberToShortNumber[number]
+	return number, shortNumber, nil
 }
 
 func (d *memdb) Close() error {
