@@ -39,7 +39,7 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d func(id 
 		addr := l.Addr().String()
 		srvc, err := serviceimpl.New(&serviceimpl.Opts{
 			PublicAddr:                 addr,
-			NumberDomain:               testsupport.NumberDomain,
+			ChatNumberDomain:           testsupport.ChatNumberDomain,
 			DB:                         database,
 			Broker:                     b(serverID),
 			PresenceRepo:               presenceRepo,

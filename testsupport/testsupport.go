@@ -27,7 +27,7 @@ const (
 	ForwardingTimeout                    = 2000 * time.Millisecond
 	MinForwardingRetryInterval           = 200 * time.Millisecond
 	UserTransferInterval                 = 100 * time.Millisecond
-	NumberDomain                         = "lantern.io"
+	ChatNumberDomain                     = "lantern.io"
 
 	server1 = 1
 	server2 = 2
@@ -102,9 +102,9 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 		client, msg := doLogin(t, serverID, identityKey, deviceId, privateKey)
 		number := client.Receive()
 		require.Equal(t, msg.Sequence, number.Sequence)
-		require.Equal(t, identityKey.Number(), number.GetNumber().Number)
-		require.Equal(t, identityKey.Number()[:12], number.GetNumber().ShortNumber)
-		require.Equal(t, NumberDomain, number.GetNumber().Domain)
+		require.Equal(t, identityKey.Number(), number.GetChatNumber().Number)
+		require.Equal(t, identityKey.Number()[:12], number.GetChatNumber().ShortNumber)
+		require.Equal(t, ChatNumberDomain, number.GetChatNumber().Domain)
 		return client
 	}
 
@@ -194,28 +194,28 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 	t.Run("look up a number for another user using their short number", func(t *testing.T) {
 		shortNumber := userA.Number()[:12]
 		request := mb.Build(
-			&model.Message_FindNumberByShortNumber{
-				FindNumberByShortNumber: &model.FindNumberByShortNumber{
+			&model.Message_FindChatNumberByShortNumber{
+				FindChatNumberByShortNumber: &model.FindChatNumberByShortNumber{
 					ShortNumber: shortNumber,
 				},
 			})
 		clientB1Anonymous.Send(request)
-		number := clientB1Anonymous.Receive().GetNumber().Number
+		number := clientB1Anonymous.Receive().GetChatNumber().Number
 		require.EqualValues(t, userA.Number(), number)
 	})
 
 	t.Run("look up short number for another user", func(t *testing.T) {
 		request := mb.Build(
-			&model.Message_FindNumberByIdentityKey{
-				FindNumberByIdentityKey: &model.FindNumberByIdentityKey{
+			&model.Message_FindChatNumberByIdentityKey{
+				FindChatNumberByIdentityKey: &model.FindChatNumberByIdentityKey{
 					IdentityKey: userA,
 				},
 			})
 		clientB1Anonymous.Send(request)
 		response := clientB1Anonymous.Receive()
-		require.Equal(t, userA.Number(), response.GetNumber().Number)
-		require.Equal(t, userA.Number()[:12], response.GetNumber().ShortNumber)
-		require.Equal(t, NumberDomain, response.GetNumber().Domain)
+		require.Equal(t, userA.Number(), response.GetChatNumber().Number)
+		require.Equal(t, userA.Number()[:12], response.GetChatNumber().ShortNumber)
+		require.Equal(t, ChatNumberDomain, response.GetChatNumber().Domain)
 	})
 
 	t.Run("request a preKey, pretending that we already know about one of the user's devices", func(t *testing.T) {

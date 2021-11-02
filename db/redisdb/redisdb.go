@@ -300,7 +300,7 @@ func (d *redisDB) AllRegisteredDevices() ([]*model.Address, error) {
 	return result, nil
 }
 
-func (d *redisDB) RegisterNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error) {
+func (d *redisDB) RegisterChatNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error) {
 	identityKeyString := identityKey.String()
 
 	ctx, cancel := defaultContext()
@@ -321,7 +321,7 @@ func (d *redisDB) RegisterNumber(identityKey identity.PublicKey, newNumber strin
 	return results[0].(string), results[1].(string), nil
 }
 
-func (d *redisDB) FindNumberByShortNumber(shortNumber string) (string, error) {
+func (d *redisDB) FindChatNumberByShortNumber(shortNumber string) (string, error) {
 	ctx, cancel := defaultContext()
 	defer cancel()
 
@@ -336,7 +336,7 @@ func (d *redisDB) FindNumberByShortNumber(shortNumber string) (string, error) {
 	return number, nil
 }
 
-func (d *redisDB) FindNumberByIdentityKey(identityKey identity.PublicKey) (string, string, error) {
+func (d *redisDB) FindChatNumberByIdentityKey(identityKey identity.PublicKey) (string, string, error) {
 	identityKeyString := identityKey.String()
 
 	ctx, cancel := defaultContext()

@@ -36,7 +36,7 @@ type Opts struct {
 	// The address at which this service publicly reachable. Used by other tasses to forward messages to us for consumption by our clients. Required.
 	PublicAddr string
 	// Domain for which this tassis registers short numbers
-	NumberDomain string
+	ChatNumberDomain string
 	// The DB to use for storing user device information and keys
 	DB db.DB
 	// The Broker to use for transmitting user messages between devices
@@ -102,7 +102,7 @@ func (opts *Opts) ApplyDefaults() {
 
 type Service struct {
 	publicAddr                 string
-	numberDomain               string
+	chatNumberDomain           string
 	db                         db.DB
 	broker                     broker.Broker
 	presenceRepo               presence.Repository
@@ -132,7 +132,7 @@ func New(opts *Opts) (*Service, error) {
 	}
 	srvc := &Service{
 		publicAddr:                 strings.ToLower(opts.PublicAddr),
-		numberDomain:               opts.NumberDomain,
+		chatNumberDomain:           opts.ChatNumberDomain,
 		db:                         opts.DB,
 		broker:                     opts.Broker,
 		presenceRepo:               opts.PresenceRepo,
@@ -355,17 +355,17 @@ func (conn *clientConnection) handleOutbound() {
 			} else {
 				conn.handleRequestUploadAuthorizations(msg)
 			}
-		case *model.Message_FindNumberByShortNumber:
+		case *model.Message_FindChatNumberByShortNumber:
 			if conn.isAuthenticated() {
 				err = model.ErrNonAnonymous
 			} else {
-				conn.handleFindNumberByShortNumber(msg)
+				conn.handleFindChatNumberByShortNumber(msg)
 			}
-		case *model.Message_FindNumberByIdentityKey:
+		case *model.Message_FindChatNumberByIdentityKey:
 			if conn.isAuthenticated() {
 				err = model.ErrNonAnonymous
 			} else {
-				conn.handleFindNumberByIdentityKey(msg)
+				conn.handleFindChatNumberByIdentityKey(msg)
 			}
 		case *model.Message_OutboundMessage:
 			if conn.isAuthenticated() {
@@ -436,11 +436,11 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	// Send back a Number with information about our number
 	outMsg := &model.Message{
 		Sequence: msg.Sequence,
-		Payload: &model.Message_Number{
-			Number: &model.Number{
+		Payload: &model.Message_ChatNumber{
+			ChatNumber: &model.ChatNumber{
 				Number:      number,
 				ShortNumber: shortNumber,
-				Domain:      conn.srvc.numberDomain,
+				Domain:      conn.srvc.chatNumberDomain,
 			},
 		},
 	}
@@ -469,7 +469,7 @@ func (conn *clientConnection) getNumber() (string, string, error) {
 			newShortNumber = preferredNumber
 			lastChance = true
 		}
-		number, shortNumber, err := conn.srvc.db.RegisterNumber(identityKey, newNumber, newShortNumber)
+		number, shortNumber, err := conn.srvc.db.RegisterChatNumber(identityKey, newNumber, newShortNumber)
 		if err == nil {
 			return number, shortNumber, nil
 		}
@@ -575,9 +575,9 @@ func (conn *clientConnection) handleRequestUploadAuthorizations(msg *model.Messa
 	conn.send(outMsg)
 }
 
-func (conn *clientConnection) handleFindNumberByShortNumber(msg *model.Message) {
-	shortNumber := msg.GetFindNumberByShortNumber().ShortNumber
-	number, err := conn.srvc.db.FindNumberByShortNumber(shortNumber)
+func (conn *clientConnection) handleFindChatNumberByShortNumber(msg *model.Message) {
+	shortNumber := msg.GetFindChatNumberByShortNumber().ShortNumber
+	number, err := conn.srvc.db.FindChatNumberByShortNumber(shortNumber)
 	if err != nil {
 		conn.error(msg, err)
 		return
@@ -585,20 +585,20 @@ func (conn *clientConnection) handleFindNumberByShortNumber(msg *model.Message) 
 
 	outMsg := &model.Message{
 		Sequence: msg.Sequence,
-		Payload: &model.Message_Number{
-			Number: &model.Number{
+		Payload: &model.Message_ChatNumber{
+			ChatNumber: &model.ChatNumber{
 				Number:      number,
 				ShortNumber: shortNumber,
-				Domain:      conn.srvc.numberDomain,
+				Domain:      conn.srvc.chatNumberDomain,
 			},
 		},
 	}
 	conn.send(outMsg)
 }
 
-func (conn *clientConnection) handleFindNumberByIdentityKey(msg *model.Message) {
-	identityKey := msg.GetFindNumberByIdentityKey().IdentityKey
-	number, shortNumber, err := conn.srvc.db.FindNumberByIdentityKey(identityKey)
+func (conn *clientConnection) handleFindChatNumberByIdentityKey(msg *model.Message) {
+	identityKey := msg.GetFindChatNumberByIdentityKey().IdentityKey
+	number, shortNumber, err := conn.srvc.db.FindChatNumberByIdentityKey(identityKey)
 	if err != nil {
 		conn.error(msg, err)
 		return
@@ -606,11 +606,11 @@ func (conn *clientConnection) handleFindNumberByIdentityKey(msg *model.Message) 
 
 	outMsg := &model.Message{
 		Sequence: msg.Sequence,
-		Payload: &model.Message_Number{
-			Number: &model.Number{
+		Payload: &model.Message_ChatNumber{
+			ChatNumber: &model.ChatNumber{
 				Number:      number,
 				ShortNumber: shortNumber,
-				Domain:      conn.srvc.numberDomain,
+				Domain:      conn.srvc.chatNumberDomain,
 			},
 		},
 	}

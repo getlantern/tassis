@@ -164,20 +164,20 @@ message UploadAuthorizations {
 
 // Requires anonymous connection
 //
-// A request to look up a number corresponding to a short number.
-message FindNumberByShortNumber {
-    string shortNumber = 1; // the short number for which to look up the number
+// A request to look up a ChatNumber corresponding to a short number.
+message FindChatNumberByShortNumber {
+    string shortNumber = 1; // the short number for which to look up the ChatNumber
 }
 
 // Requires anonymous connection
 //
-// A request to look up a number corresponding to an IdentityKey.
-message FindNumberByIdentityKey {
-    bytes identityKey = 1; // the identity key for which to look up the number
+// A request to look up a ChatNumber corresponding to an IdentityKey.
+message FindChatNumberByIdentityKey {
+    bytes identityKey = 1; // the identity key for which to look up the ChatNumber
 }
 
 // A number representing the IdentityKey in this system.
-message Number {
+message ChatNumber {
     string number = 1; // a form of IdentityKey that looks like a phone number
     string shortNumber = 2; // short version of the number
     string domain = 3; // the domain within which the short number is registered
@@ -202,9 +202,9 @@ message Message {
         UploadAuthorizations        uploadAuthorizations        = 14;
         OutboundMessage             outboundMessage             = 15;
         InboundMessage              inboundMessage              = 16;
-        FindNumberByShortNumber     findNumberByShortNumber     = 17;
-        FindNumberByIdentityKey     findNumberByIdentityKey     = 18;
-        Number                      number                      = 19;
+        FindChatNumberByShortNumber findChatNumberByShortNumber = 17;
+        FindChatNumberByIdentityKey findChatNumberByIdentityKey = 18;
+        ChatNumber                  chatNumber                  = 19;
     }
 }
 

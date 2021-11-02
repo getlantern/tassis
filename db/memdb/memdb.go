@@ -146,7 +146,7 @@ func (d *memdb) AllRegisteredDevices() ([]*model.Address, error) {
 	return result, nil
 }
 
-func (d *memdb) RegisterNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error) {
+func (d *memdb) RegisterChatNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error) {
 	identityKeyString := identityKey.String()
 
 	d.mx.Lock()
@@ -172,7 +172,7 @@ func (d *memdb) RegisterNumber(identityKey identity.PublicKey, newNumber string,
 	return newNumber, newShortNumber, nil
 }
 
-func (d *memdb) FindNumberByShortNumber(shortNumber string) (string, error) {
+func (d *memdb) FindChatNumberByShortNumber(shortNumber string) (string, error) {
 	d.mx.Lock()
 	defer d.mx.Unlock()
 	number, found := d.shortNumberToNumber[shortNumber]
@@ -182,7 +182,7 @@ func (d *memdb) FindNumberByShortNumber(shortNumber string) (string, error) {
 	return number, nil
 }
 
-func (d *memdb) FindNumberByIdentityKey(identityKey identity.PublicKey) (string, string, error) {
+func (d *memdb) FindChatNumberByIdentityKey(identityKey identity.PublicKey) (string, string, error) {
 	identityKeyString := identityKey.String()
 	d.mx.Lock()
 	defer d.mx.Unlock()

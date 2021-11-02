@@ -19,11 +19,11 @@ type DB interface {
 
 	AllRegisteredDevices() ([]*model.Address, error)
 
-	RegisterNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error)
+	RegisterChatNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error)
 
-	FindNumberByShortNumber(shortNumber string) (string, error)
+	FindChatNumberByShortNumber(shortNumber string) (string, error)
 
-	FindNumberByIdentityKey(identityKey identity.PublicKey) (string, string, error)
+	FindChatNumberByIdentityKey(identityKey identity.PublicKey) (string, string, error)
 
 	Close() error
 }

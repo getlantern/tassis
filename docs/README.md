@@ -170,15 +170,15 @@ end
     - [Address](#tassis.Address)
     - [AuthChallenge](#tassis.AuthChallenge)
     - [AuthResponse](#tassis.AuthResponse)
+    - [ChatNumber](#tassis.ChatNumber)
     - [Configuration](#tassis.Configuration)
     - [Error](#tassis.Error)
-    - [FindNumberByIdentityKey](#tassis.FindNumberByIdentityKey)
-    - [FindNumberByShortNumber](#tassis.FindNumberByShortNumber)
+    - [FindChatNumberByIdentityKey](#tassis.FindChatNumberByIdentityKey)
+    - [FindChatNumberByShortNumber](#tassis.FindChatNumberByShortNumber)
     - [ForwardedMessage](#tassis.ForwardedMessage)
     - [InboundMessage](#tassis.InboundMessage)
     - [Login](#tassis.Login)
     - [Message](#tassis.Message)
-    - [Number](#tassis.Number)
     - [OutboundMessage](#tassis.OutboundMessage)
     - [PreKey](#tassis.PreKey)
     - [PreKeys](#tassis.PreKeys)
@@ -299,6 +299,23 @@ The server will accept an AuthResponse only once per connection.
 
 
 
+<a name="tassis.ChatNumber"></a>
+
+#### ChatNumber
+A number representing the IdentityKey in this system.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| number | [string](#string) |  | a form of IdentityKey that looks like a phone number |
+| shortNumber | [string](#string) |  | short version of the number |
+| domain | [string](#string) |  | the domain within which the short number is registered |
+
+
+
+
+
+
 <a name="tassis.Configuration"></a>
 
 #### Configuration
@@ -330,34 +347,34 @@ Indicates that an error occurred processing a request.
 
 
 
-<a name="tassis.FindNumberByIdentityKey"></a>
+<a name="tassis.FindChatNumberByIdentityKey"></a>
 
-#### FindNumberByIdentityKey
+#### FindChatNumberByIdentityKey
 Requires anonymous connection
 
-A request to look up a number corresponding to an IdentityKey.
+A request to look up a ChatNumber corresponding to an IdentityKey.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| identityKey | [bytes](#bytes) |  | the identity key for which to look up the number |
+| identityKey | [bytes](#bytes) |  | the identity key for which to look up the ChatNumber |
 
 
 
 
 
 
-<a name="tassis.FindNumberByShortNumber"></a>
+<a name="tassis.FindChatNumberByShortNumber"></a>
 
-#### FindNumberByShortNumber
+#### FindChatNumberByShortNumber
 Requires anonymous connection
 
-A request to look up a number corresponding to a short number.
+A request to look up a ChatNumber corresponding to a short number.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| shortNumber | [string](#string) |  | the short number for which to look up the number |
+| shortNumber | [string](#string) |  | the short number for which to look up the ChatNumber |
 
 
 
@@ -435,26 +452,9 @@ The envelope for all messages sent to/from clients.
 | uploadAuthorizations | [UploadAuthorizations](#tassis.UploadAuthorizations) |  |  |
 | outboundMessage | [OutboundMessage](#tassis.OutboundMessage) |  |  |
 | inboundMessage | [InboundMessage](#tassis.InboundMessage) |  |  |
-| findNumberByShortNumber | [FindNumberByShortNumber](#tassis.FindNumberByShortNumber) |  |  |
-| findNumberByIdentityKey | [FindNumberByIdentityKey](#tassis.FindNumberByIdentityKey) |  |  |
-| number | [Number](#tassis.Number) |  |  |
-
-
-
-
-
-
-<a name="tassis.Number"></a>
-
-#### Number
-A number representing the IdentityKey in this system.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| number | [string](#string) |  | a form of IdentityKey that looks like a phone number |
-| shortNumber | [string](#string) |  | short version of the number |
-| domain | [string](#string) |  | the domain within which the short number is registered |
+| findChatNumberByShortNumber | [FindChatNumberByShortNumber](#tassis.FindChatNumberByShortNumber) |  |  |
+| findChatNumberByIdentityKey | [FindChatNumberByIdentityKey](#tassis.FindChatNumberByIdentityKey) |  |  |
+| chatNumber | [ChatNumber](#tassis.ChatNumber) |  |  |
 
 
 
