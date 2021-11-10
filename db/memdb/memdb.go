@@ -2,7 +2,7 @@
 package memdb
 
 import (
-	"bytes"
+	"crypto/subtle"
 	"sync"
 
 	"github.com/getlantern/libmessaging-go/identity"
@@ -41,7 +41,7 @@ func (d *memdb) Register(identityKey identity.PublicKey, deviceId []byte, regist
 		d.identities[identityKeyString] = identity
 	}
 	existing := identity[string(deviceId)]
-	if existing != nil && bytes.Equal(existing.SignedPreKey, registration.SignedPreKey) {
+	if existing != nil && subtle.ConstantTimeCompare(existing.SignedPreKey, registration.SignedPreKey) == 1 {
 		// Add pre-keys
 		existing.OneTimePreKeys = append(existing.OneTimePreKeys, registration.OneTimePreKeys...)
 	} else {

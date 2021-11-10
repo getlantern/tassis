@@ -1,8 +1,8 @@
 package serviceimpl
 
 import (
-	"bytes"
 	"crypto/rand"
+	"crypto/subtle"
 	gerrors "errors"
 	"fmt"
 	"strings"
@@ -398,7 +398,7 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	}
 
 	// verify nonce
-	if !bytes.Equal(conn.authNonce, login.Nonce) {
+	if subtle.ConstantTimeCompare(conn.authNonce, login.Nonce) != 1 {
 		conn.error(msg, model.ErrUnauthorized)
 		conn.Close()
 		return
