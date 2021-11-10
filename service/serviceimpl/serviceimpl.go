@@ -3,6 +3,7 @@ package serviceimpl
 import (
 	"bytes"
 	"crypto/rand"
+	gerrors "errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -34,6 +35,8 @@ var (
 type Opts struct {
 	// The address at which this service publicly reachable. Used by other tasses to forward messages to us for consumption by our clients. Required.
 	PublicAddr string
+	// Domain for which this tassis registers short numbers
+	ChatNumberDomain string
 	// The DB to use for storing user device information and keys
 	DB db.DB
 	// The Broker to use for transmitting user messages between devices
@@ -99,6 +102,7 @@ func (opts *Opts) ApplyDefaults() {
 
 type Service struct {
 	publicAddr                 string
+	chatNumberDomain           string
 	db                         db.DB
 	broker                     broker.Broker
 	presenceRepo               presence.Repository
@@ -128,6 +132,7 @@ func New(opts *Opts) (*Service, error) {
 	}
 	srvc := &Service{
 		publicAddr:                 strings.ToLower(opts.PublicAddr),
+		chatNumberDomain:           opts.ChatNumberDomain,
 		db:                         opts.DB,
 		broker:                     opts.Broker,
 		presenceRepo:               opts.PresenceRepo,
@@ -213,12 +218,12 @@ func (srvc *Service) Connect() (service.ClientConnection, error) {
 	return conn, nil
 }
 
-func (conn *clientConnection) getIdentityKey() []byte {
+func (conn *clientConnection) getIdentityKey() identity.PublicKey {
 	identityKey := conn.identityKey.Load()
 	if identityKey == nil {
 		return nil
 	}
-	return identityKey.([]byte)
+	return identity.PublicKey(identityKey.([]byte))
 }
 
 func (conn *clientConnection) getDeviceId() []byte {
@@ -273,7 +278,7 @@ func (conn *clientConnection) warnPreKeysLowIfNecessary() {
 	for {
 		numPreKeys, err := conn.srvc.db.PreKeysRemaining(conn.getIdentityKey(), conn.getDeviceId())
 		if err == nil && numPreKeys < conn.srvc.lowPreKeysLimit {
-			conn.send(conn.mb.Build(&model.Message_PreKeysLow{&model.PreKeysLow{KeysRequested: uint32(conn.srvc.numPreKeysToRequest)}}))
+			conn.send(conn.mb.Build(&model.Message_PreKeysLow{PreKeysLow: &model.PreKeysLow{KeysRequested: uint32(conn.srvc.numPreKeysToRequest)}}))
 		}
 		select {
 		case <-time.After(conn.srvc.checkPreKeysInterval):
@@ -350,6 +355,18 @@ func (conn *clientConnection) handleOutbound() {
 			} else {
 				conn.handleRequestUploadAuthorizations(msg)
 			}
+		case *model.Message_FindChatNumberByShortNumber:
+			if conn.isAuthenticated() {
+				err = model.ErrNonAnonymous
+			} else {
+				conn.handleFindChatNumberByShortNumber(msg)
+			}
+		case *model.Message_FindChatNumberByIdentityKey:
+			if conn.isAuthenticated() {
+				err = model.ErrNonAnonymous
+			} else {
+				conn.handleFindChatNumberByIdentityKey(msg)
+			}
 		case *model.Message_OutboundMessage:
 			if conn.isAuthenticated() {
 				err = model.ErrNonAnonymous
@@ -365,8 +382,8 @@ func (conn *clientConnection) handleOutbound() {
 }
 
 func (conn *clientConnection) sendInitMessages() {
-	conn.in <- conn.mb.Build(&model.Message_AuthChallenge{&model.AuthChallenge{Nonce: conn.authNonce}})
-	conn.in <- conn.mb.Build(&model.Message_Configuration{&model.Configuration{MaxAttachmentSize: conn.srvc.attachmentsManager.MaxAttachmentSize()}})
+	conn.in <- conn.mb.Build(&model.Message_AuthChallenge{AuthChallenge: &model.AuthChallenge{Nonce: conn.authNonce}})
+	conn.in <- conn.mb.Build(&model.Message_Configuration{Configuration: &model.Configuration{MaxAttachmentSize: conn.srvc.attachmentsManager.MaxAttachmentSize()}})
 }
 
 func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
@@ -383,19 +400,28 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	// verify nonce
 	if !bytes.Equal(conn.authNonce, login.Nonce) {
 		conn.error(msg, model.ErrUnauthorized)
+		conn.Close()
 		return
 	}
 
 	// verify signature
 	address := login.Address
-	publicKey := identity.PublicKey(address.IdentityKey)
-	if !publicKey.Verify(authResponse.Login, authResponse.Signature) {
+	identityKey := identity.PublicKey(address.IdentityKey)
+	if !identityKey.Verify(authResponse.Login, authResponse.Signature) {
 		conn.error(msg, model.ErrUnauthorized)
+		conn.Close()
 		return
 	}
 
 	conn.identityKey.Store(address.IdentityKey)
 	conn.deviceId.Store(address.DeviceId)
+
+	// get the number
+	number, shortNumber, err := conn.getNumber()
+	if err != nil {
+		conn.error(msg, err)
+		conn.Close()
+	}
 
 	err = conn.startHandlingInbound()
 	if err != nil {
@@ -407,7 +433,53 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 		go conn.warnPreKeysLowIfNecessary()
 	}
 
-	conn.ack(msg)
+	// Send back a Number with information about our number
+	outMsg := &model.Message{
+		Sequence: msg.Sequence,
+		Payload: &model.Message_ChatNumber{
+			ChatNumber: &model.ChatNumber{
+				Number:      number,
+				ShortNumber: shortNumber,
+				Domain:      conn.srvc.chatNumberDomain,
+			},
+		},
+	}
+	conn.send(outMsg)
+}
+
+func (conn *clientConnection) getNumber() (string, string, error) {
+	identityKey := conn.getIdentityKey()
+	preferredNumber := identityKey.Number()
+	iter := 0
+	for {
+		newNumber := preferredNumber
+		newNumberTail := newNumber[12:]
+		newShortNumber := newNumber[:12]
+		for i := 0; i < iter; i++ {
+			// try adding some 5's to the number to find a unique one (5s are ignored when parsing numbers)
+			newShortNumber = "5" + newShortNumber
+			newNumberTail = "5" + newNumberTail
+		}
+		newNumber = fmt.Sprintf("%s%s", newShortNumber, newNumberTail)
+		lastChance := false
+		if len(newShortNumber) >= len(preferredNumber) {
+			// we've gotten to the point where the short number isn't any shorter than the whole number, so just
+			// use the whole number
+			newNumber = preferredNumber
+			newShortNumber = preferredNumber
+			lastChance = true
+		}
+		number, shortNumber, err := conn.srvc.db.RegisterChatNumber(identityKey, newNumber, newShortNumber)
+		if err == nil {
+			return number, shortNumber, nil
+		}
+		if gerrors.Is(err, model.ErrNumberTaken) && !lastChance {
+			// this number is taken, try again with a different version of number
+			iter++
+			continue
+		}
+		return "", "", err
+	}
 }
 
 func (conn *clientConnection) handleACK(msg *model.Message) {
@@ -472,7 +544,7 @@ func (conn *clientConnection) handleRequestPreKeys(msg *model.Message) {
 
 	outMsg := &model.Message{
 		Sequence: msg.Sequence,
-		Payload:  &model.Message_PreKeys{&model.PreKeys{PreKeys: preKeys}},
+		Payload:  &model.Message_PreKeys{PreKeys: &model.PreKeys{PreKeys: preKeys}},
 	}
 	conn.send(outMsg)
 }
@@ -498,7 +570,49 @@ func (conn *clientConnection) handleRequestUploadAuthorizations(msg *model.Messa
 
 	outMsg := &model.Message{
 		Sequence: msg.Sequence,
-		Payload:  &model.Message_UploadAuthorizations{uploadAuthorizations},
+		Payload:  &model.Message_UploadAuthorizations{UploadAuthorizations: uploadAuthorizations},
+	}
+	conn.send(outMsg)
+}
+
+func (conn *clientConnection) handleFindChatNumberByShortNumber(msg *model.Message) {
+	shortNumber := msg.GetFindChatNumberByShortNumber().ShortNumber
+	number, err := conn.srvc.db.FindChatNumberByShortNumber(shortNumber)
+	if err != nil {
+		conn.error(msg, err)
+		return
+	}
+
+	outMsg := &model.Message{
+		Sequence: msg.Sequence,
+		Payload: &model.Message_ChatNumber{
+			ChatNumber: &model.ChatNumber{
+				Number:      number,
+				ShortNumber: shortNumber,
+				Domain:      conn.srvc.chatNumberDomain,
+			},
+		},
+	}
+	conn.send(outMsg)
+}
+
+func (conn *clientConnection) handleFindChatNumberByIdentityKey(msg *model.Message) {
+	identityKey := msg.GetFindChatNumberByIdentityKey().IdentityKey
+	number, shortNumber, err := conn.srvc.db.FindChatNumberByIdentityKey(identityKey)
+	if err != nil {
+		conn.error(msg, err)
+		return
+	}
+
+	outMsg := &model.Message{
+		Sequence: msg.Sequence,
+		Payload: &model.Message_ChatNumber{
+			ChatNumber: &model.ChatNumber{
+				Number:      number,
+				ShortNumber: shortNumber,
+				Domain:      conn.srvc.chatNumberDomain,
+			},
+		},
 	}
 	conn.send(outMsg)
 }

@@ -12,13 +12,21 @@ import (
 
 func New() db.DB {
 	return &memdb{
-		identities: make(map[string]map[string]*model.Register),
+		identities:          make(map[string]map[string]*model.Register),
+		identityKeyToNumber: make(map[string]string),
+		numberToIdentityKey: make(map[string]string),
+		numberToShortNumber: make(map[string]string),
+		shortNumberToNumber: make(map[string]string),
 	}
 }
 
 type memdb struct {
-	identities map[string]map[string]*model.Register
-	mx         sync.Mutex
+	identities          map[string]map[string]*model.Register
+	identityKeyToNumber map[string]string
+	numberToIdentityKey map[string]string
+	numberToShortNumber map[string]string
+	shortNumberToNumber map[string]string
+	mx                  sync.Mutex
 }
 
 func (d *memdb) Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
@@ -136,6 +144,54 @@ func (d *memdb) AllRegisteredDevices() ([]*model.Address, error) {
 	}
 
 	return result, nil
+}
+
+func (d *memdb) RegisterChatNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error) {
+	identityKeyString := identityKey.String()
+
+	d.mx.Lock()
+	defer d.mx.Unlock()
+
+	number, found := d.identityKeyToNumber[identityKeyString]
+	if found {
+		// already registered
+		return number, d.numberToShortNumber[number], nil
+	}
+
+	_, numberTaken := d.numberToIdentityKey[newNumber]
+	if numberTaken {
+		// number already belongs to a different identity key
+		return "", "", model.ErrNumberTaken
+	}
+
+	// register
+	d.identityKeyToNumber[identityKeyString] = newNumber
+	d.numberToIdentityKey[newNumber] = identityKeyString
+	d.numberToShortNumber[newNumber] = newShortNumber
+	d.shortNumberToNumber[newShortNumber] = newNumber
+	return newNumber, newShortNumber, nil
+}
+
+func (d *memdb) FindChatNumberByShortNumber(shortNumber string) (string, error) {
+	d.mx.Lock()
+	defer d.mx.Unlock()
+	number, found := d.shortNumberToNumber[shortNumber]
+	if !found {
+		return "", model.ErrUnknownShortNumber
+	}
+	return number, nil
+}
+
+func (d *memdb) FindChatNumberByIdentityKey(identityKey identity.PublicKey) (string, string, error) {
+	identityKeyString := identityKey.String()
+	d.mx.Lock()
+	defer d.mx.Unlock()
+	number, found := d.identityKeyToNumber[identityKeyString]
+	if !found {
+		return "", "", model.ErrUnknownIdentity
+	}
+	shortNumber := d.numberToShortNumber[number]
+	return number, shortNumber, nil
 }
 
 func (d *memdb) Close() error {

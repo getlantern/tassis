@@ -7,6 +7,7 @@
   - [Message Transport](#message-transport)
 - [WebSockets API](#websockets-api)
 - [Security](#security)
+- [Chat Numbers](#chat-numbers)
 - [Message Exchange Flow](#message-exchange-flow)
 - [Messages](#messages)
 
@@ -95,6 +96,35 @@ Rate limiting should be used to prevent individual clients from flooding the net
 ##### Message Stealing
 In order to prevent unauthorized users from stealing messages before they can be received by their legitimate clients, tassis authenticates clients based on IdentityKey to make sure that only authorized clients may read messages on behalf of a specific user.
 
+## Chat Numbers
+Tassis assigns every IdentityKey a unique ChatNumber, which is a number that looks like a phone number but isn't. Tassis communicates the IdentityKey's ChatNumber in its response to successful authentications.
+
+### Full ChatNumber
+The full ChatNumber is an encoding of the IdentityKey.
+
+### Short ChatNumber
+The short ChartNumber is a prefix of the full ChatNumber which can be used to look up the full ChatNumber.
+
+### Avoiding Collisions
+It is possible for two distinct IdentityKeys to encode to the same ChatNumber, which would cause a collision. In order to distinguish these identities, tassis adds 5s to the start and end of the short ChatNumber for whichever identity came second.
+
+For example, let's say we have the following two full chat numbers
+
+- `292013940138492304132429201394013849230413242920139401384923041324292013940138491`
+- `292013940138492304132429201394013849230413242920139401384923041324292013940138492`
+
+The first gets a standard short number:
+
+`292013940138492304132429201394013849230413242920139401384923041324292013940138491` -> `292013940138`
+
+The second gets some 5's inserted into the full and short numbers to distinguish it:
+
+`52920139401385492304132429201394013849230413242920139401384923041324292013940138492` -> `52920139401385`
+
+When parsing ChatNumbers, 5s are ignored, so the modified form of the above full ChatNumber still parses into the same IdentityKey as the original form.
+
+The reason for modifying the full number in addition to the short number is that this enforces the invariant that the short chat number should always be a prefix of the full number.
+
 ## Message Exchange Flow
 ![Message Exchange Flow](mainflow.png)
 
@@ -118,7 +148,9 @@ RecipientServerConn->Recipient:Configuration
 Recipient->Recipient:apply configuration
 RecipientServerConn->Recipient:AuthChallenge
 Recipient->RecipientServerConn:AuthResponse
-RecipientServerConn->Recipient:Ack
+RecipientServerConn->RecipientServerConn:authenticate
+RecipientServerConn->Database:registerChatNumber
+RecipientServerConn->Recipient:ChatNumber
 
 ==sender connects anonymously==
 Sender->SenderServerConn:Connect WebSocket
@@ -132,11 +164,15 @@ Recipient->RecipientServerConn:Registration
 RecipientServerConn->Database:Register()
 RecipientServerConn->Recipient:Ack
 
+==sender finds recipient using short ChatNumber==
+Sender->SenderServerConn:FindChatNumberByShortNumber
+SenderServerConn->Database:FindChatNumberByShortNumber()
+SenderServerConn->Sender:ChatNumber
+
 ==sender requests key material to init session==
 Sender->SenderServerConn:RequestPreKeys
 SenderServerConn->Database:RequestPreKeys()
 SenderServerConn->Sender:PreKeys (one per device)
-end
 
 ==message exchange==
 Sender->SenderServerConn:RequestUploadAuthorizations
@@ -152,7 +188,6 @@ Recipient->Recipient:decrypt message
 Recipient->RecipientServerConn:Ack
 RecipientServerConn->Broker:Ack
 Recipient->S3StorageService:download attachment
-end
 
 ==keep oneTimePreKeys filled==
 loop periodically check if preKeys low
@@ -170,8 +205,11 @@ end
     - [Address](#tassis.Address)
     - [AuthChallenge](#tassis.AuthChallenge)
     - [AuthResponse](#tassis.AuthResponse)
+    - [ChatNumber](#tassis.ChatNumber)
     - [Configuration](#tassis.Configuration)
     - [Error](#tassis.Error)
+    - [FindChatNumberByIdentityKey](#tassis.FindChatNumberByIdentityKey)
+    - [FindChatNumberByShortNumber](#tassis.FindChatNumberByShortNumber)
     - [ForwardedMessage](#tassis.ForwardedMessage)
     - [InboundMessage](#tassis.InboundMessage)
     - [Login](#tassis.Login)
@@ -212,7 +250,9 @@ management and receiving messages from other identities.
 Authentication is performed using a challenge-response pattern in which the server sends
 an authentication challenge to the client and the client responds with a signed authentication
 response identifying its identityKey and deviceId. On anonymous connections, clients simply ignore the
-authentication challenge.
+authentication challenge. Successful authentications are acknowledged with a Number that gives information
+about the IdentityKey number under which the authenticated user is registered. This number is constant over
+time.
 
 Messages sent from clients to servers follow a request/response pattern. The server will always
 respond to these with either an Ack or a typed response. In the event of an error, it will respond
@@ -294,6 +334,23 @@ The server will accept an AuthResponse only once per connection.
 
 
 
+<a name="tassis.ChatNumber"></a>
+
+#### ChatNumber
+A number representing the IdentityKey in this system.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| number | [string](#string) |  | a form of IdentityKey that looks like a phone number |
+| shortNumber | [string](#string) |  | short version of the number |
+| domain | [string](#string) |  | the domain within which the short number is registered |
+
+
+
+
+
+
 <a name="tassis.Configuration"></a>
 
 #### Configuration
@@ -302,7 +359,7 @@ Provides configuration information to clients
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| maxAttachmentSize | [int64](#int64) |  | The maxmimum allowed attachment size (encrypted size, not plaintext) |
+| maxAttachmentSize | [int64](#int64) |  | The maximum allowed attachment size (encrypted size, not plaintext) |
 
 
 
@@ -319,6 +376,40 @@ Indicates that an error occurred processing a request.
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | An identifier for the error, like "unknown_identity" |
 | description | [string](#string) |  | Optional additional information about the error |
+
+
+
+
+
+
+<a name="tassis.FindChatNumberByIdentityKey"></a>
+
+#### FindChatNumberByIdentityKey
+Requires anonymous connection
+
+A request to look up a ChatNumber corresponding to an IdentityKey.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| identityKey | [bytes](#bytes) |  | the identity key for which to look up the ChatNumber |
+
+
+
+
+
+
+<a name="tassis.FindChatNumberByShortNumber"></a>
+
+#### FindChatNumberByShortNumber
+Requires anonymous connection
+
+A request to look up a ChatNumber corresponding to a short number.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| shortNumber | [string](#string) |  | the short number for which to look up the ChatNumber |
 
 
 
@@ -396,6 +487,9 @@ The envelope for all messages sent to/from clients.
 | uploadAuthorizations | [UploadAuthorizations](#tassis.UploadAuthorizations) |  |  |
 | outboundMessage | [OutboundMessage](#tassis.OutboundMessage) |  |  |
 | inboundMessage | [InboundMessage](#tassis.InboundMessage) |  |  |
+| findChatNumberByShortNumber | [FindChatNumberByShortNumber](#tassis.FindChatNumberByShortNumber) |  |  |
+| findChatNumberByIdentityKey | [FindChatNumberByIdentityKey](#tassis.FindChatNumberByIdentityKey) |  |  |
+| chatNumber | [ChatNumber](#tassis.ChatNumber) |  |  |
 
 
 
