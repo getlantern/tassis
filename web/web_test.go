@@ -12,7 +12,7 @@ import (
 )
 
 func TestWebSocketClientInMemory(t *testing.T) {
-	testWebSocketClient(t, false, func(id int) db.DB {
+	testWebSocketClient(t, false, false, func(id int) db.DB {
 		return memdb.New()
 	}, func(id int) broker.Broker {
 		return membroker.New()

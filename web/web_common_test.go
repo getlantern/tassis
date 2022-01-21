@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d func(id int) db.DB, b func(id int) broker.Broker) {
+func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, testRateLimiting bool, d func(id int) db.DB, b func(id int) broker.Broker) {
 	listeners := make([]net.Listener, 0)
 	handlers := make([]Handler, 0)
 
@@ -66,5 +66,5 @@ func testWebSocketClient(t *testing.T, testMultiClientMessaging bool, d func(id 
 		return webclient.NewService(url, 100), database
 	}
 
-	testsupport.TestService(t, testMultiClientMessaging, presenceRepo, buildServiceAndDB)
+	testsupport.TestService(t, testMultiClientMessaging, testRateLimiting, presenceRepo, buildServiceAndDB)
 }

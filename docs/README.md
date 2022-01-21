@@ -125,6 +125,9 @@ When parsing ChatNumbers, 5s are ignored, so the modified form of the above full
 
 The reason for modifying the full number in addition to the short number is that this enforces the invariant that the short chat number should always be a prefix of the full number.
 
+### Rate limiting
+There is only a limited amount of short ChatNumbers available, specifically 125,524,238,436 (125 billion). In order to avoid malicious actors consuming and exhausting this pool, tassis imposes a global rate limit of approximately 2 chat number registrations per second. At that rate, tassis will allow up to 63,072,000 short ChatNumbers to be registered per year, which is only 0.05% of the total available pool.
+
 ## Message Exchange Flow
 ![Message Exchange Flow](mainflow.png)
 

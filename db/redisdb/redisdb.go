@@ -31,7 +31,18 @@ var (
 )
 
 const (
-	queryTimeout = 10 * time.Second
+	queryTimeout        = 10 * time.Second
+	registrationTimeout = 5 * time.Minute
+
+	// The below limits chat number registrations to an average of 2 per second, or a total of about 63 million per year
+	minMillisPerChatNumberRegistration = 500
+
+	identityToNumberKey     = "{global}identity->number"
+	numberToIdentityKey     = "{global}number->identity"
+	numberToShortNumberKey  = "{global}number->shortnumber"
+	shortNumberToNumberKey  = "{global}shortnumber->number"
+	lastRegistrationTimeKey = "{global}last-registration-time"
+	registrationTokensKey   = "{global}registration-tokens"
 )
 
 const (
@@ -88,10 +99,13 @@ local identityToNumberKey = KEYS[1]
 local numberToIdentityKey = KEYS[2]
 local numberToShortNumberKey = KEYS[3]
 local shortNumberToNumberKey = KEYS[4]
+local lastRegistrationTimeKey = KEYS[5]
+local registrationTokensKey = KEYS[6]
 
 local identityKey = ARGV[1]
 local newNumber = ARGV[2]
 local newShortNumber = ARGV[3]
+local requiredTokens = tonumber(ARGV[4])
 
 local number = redis.call("hget", identityToNumberKey, identityKey)
 if number and number ~= nil and number ~= '' then
@@ -103,7 +117,24 @@ end
 local existingIdentityKey = redis.call("hget", numberToIdentityKey, newNumber)
 if existingIdentityKey then
 	-- number already belongs to a different identity key
-	return 1
+	return -1
+end
+
+-- rate limiting
+if requiredTokens > 0 then
+	local now = ARGV[5]
+	local lastRegistrationTime = redis.call("getset", lastRegistrationTimeKey, now)
+	if lastRegistrationTime then
+		local delta = now - lastRegistrationTime - requiredTokens
+		local availableTokens = redis.call("incrby", registrationTokensKey, delta)
+		if availableTokens < 0 then
+			-- This client needs to be rate limited, return the number of tokens we're short.
+			-- We do this prior to completing the registration. Once the client has slept the
+			-- necessary amount of time, it will call us again with rate limiting disabled in
+			-- order to complete the registration.
+			return -1 * availableTokens
+		end
+	end
 end
 
 -- new registration
@@ -111,6 +142,7 @@ redis.call("hset", identityToNumberKey, identityKey, newNumber)
 redis.call("hset", numberToIdentityKey, newNumber, identityKey)
 redis.call("hset", numberToShortNumberKey, newNumber, newShortNumber)
 redis.call("hset", shortNumberToNumberKey, newShortNumber, newNumber)
+
 return {newNumber, newShortNumber}
 `
 )
@@ -303,18 +335,52 @@ func (d *redisDB) AllRegisteredDevices() ([]*model.Address, error) {
 func (d *redisDB) RegisterChatNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error) {
 	identityKeyString := identityKey.String()
 
-	ctx, cancel := defaultContext()
+	ctx, cancel := context.WithTimeout(context.Background(), registrationTimeout)
 	defer cancel()
+
+	keys := []string{
+		identityToNumberKey,
+		numberToIdentityKey,
+		numberToShortNumberKey,
+		shortNumberToNumberKey,
+		lastRegistrationTimeKey,
+		registrationTokensKey}
 
 	result, err := d.client.EvalSha(ctx,
 		d.registerNumberScriptSHA,
-		[]string{"identity->number", "number->identity", "number->shortnumber", "shortnumber->number"},
-		identityKeyString, newNumber, newShortNumber).Result()
+		keys,
+		identityKeyString,
+		newNumber,
+		newShortNumber,
+		minMillisPerChatNumberRegistration,
+		time.Now().UnixMilli()).Result()
 	if err != nil {
 		return "", "", err
 	}
-	if result == int64(1) {
-		return "", "", model.ErrNumberTaken
+	r, resultIsInt64 := result.(int64)
+	if resultIsInt64 {
+		if r == -1 {
+			return "", "", model.ErrNumberTaken
+		} else {
+			sleepFor := time.Duration(r) * time.Millisecond
+			log.Debugf("Sleeping for %v to rate limit new chat number registration", sleepFor)
+			time.Sleep(sleepFor)
+
+			// after sleeping, we can register again, this time with rate limiting turned off
+			result, err = d.client.EvalSha(ctx,
+				d.registerNumberScriptSHA,
+				keys,
+				identityKeyString,
+				newNumber,
+				newShortNumber,
+				0).Result()
+			if err != nil {
+				return "", "", err
+			}
+			if result == int64(-1) {
+				return "", "", model.ErrNumberTaken
+			}
+		}
 	}
 
 	results := result.([]interface{})
@@ -325,7 +391,7 @@ func (d *redisDB) FindChatNumberByShortNumber(shortNumber string) (string, error
 	ctx, cancel := defaultContext()
 	defer cancel()
 
-	number, err := d.client.HGet(ctx, "shortnumber->number", shortNumber).Result()
+	number, err := d.client.HGet(ctx, shortNumberToNumberKey, shortNumber).Result()
 	if err != nil {
 		log.Errorf("error here: %v", err)
 		return "", err
@@ -342,7 +408,7 @@ func (d *redisDB) FindChatNumberByIdentityKey(identityKey identity.PublicKey) (s
 	ctx, cancel := defaultContext()
 	defer cancel()
 
-	number, err := d.client.HGet(ctx, "identity->number", identityKeyString).Result()
+	number, err := d.client.HGet(ctx, identityToNumberKey, identityKeyString).Result()
 	if err != nil {
 		return "", "", err
 	}
@@ -350,7 +416,7 @@ func (d *redisDB) FindChatNumberByIdentityKey(identityKey identity.PublicKey) (s
 		return "", "", model.ErrUnknownIdentity
 	}
 
-	shortNumber, err := d.client.HGet(ctx, "number->shortnumber", number).Result()
+	shortNumber, err := d.client.HGet(ctx, numberToShortNumberKey, number).Result()
 	if err != nil {
 		return "", "", err
 	}
