@@ -50,7 +50,7 @@ var (
 )
 
 var (
-	redisURLRegExp = regexp.MustCompile(`^redis(s?)://:(.+)?@([^\s]+)$`)
+	redisURLRegExp = regexp.MustCompile(`^redis(s?)://.*:(.+)?@([^\s]+)$`)
 )
 
 func parseRedisURL(redisURL string) (useHTTPS bool, password string, redisAddr string, err error) {
