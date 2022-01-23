@@ -11,6 +11,7 @@ package redisdb
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"strings"
 	"time"
@@ -45,144 +46,54 @@ const (
 	registrationTokensKey   = "{global}registration-tokens"
 )
 
-const (
-	registerScript = `
-local deviceKey = KEYS[1]
-local identityDevicesKey = KEYS[2]
-local oneTimePreKeysKey = KEYS[3]
+//go:embed register.lua
+var registerScript []byte
 
-local newSignedPreKey = ARGV[1]
-local deviceId = ARGV[2]
+//go:embed unregister.lua
+var unregisterScript []byte
 
-local oldSignedPreKey = redis.call("hget", deviceKey, "signedPreKey")
+//go:embed get_pre_key.lua
+var getPreKeyScript []byte
 
-redis.call("sadd", identityDevicesKey, deviceId)
-if newSignedPreKey ~= oldSignedPreKey then
-	redis.call("hset", deviceKey, "signedPreKey", newSignedPreKey)
-	redis.call("del", oneTimePreKeysKey)
-	return 0
-end
-
-return 1
-`
-
-	unregisterScript = `
-local deviceKey = KEYS[1]
-local identityDevicesKey = KEYS[2]
-local oneTimePreKeysKey = KEYS[3]
-
-local deviceId = ARGV[1]
-
-local remainingDevices = redis.call("scard", identityDevicesKey)
-if remainingDevices == 1 then
-	redis.call("del", identityDevicesKey)
-else
-	redis.call("srem", identityDevicesKey, deviceId)
-end
-
-redis.call("del", deviceKey, oneTimePreKeysKey)
-return 0
-`
-
-	getPreKeyScript = `
-local deviceKey = KEYS[1]
-local oneTimePreKeysKey = KEYS[2]
-
-local signedPreKey = redis.call("hget", deviceKey, "signedPreKey")
-local oneTimePreKey = redis.call("lpop", oneTimePreKeysKey)
-
-return {signedPreKey, oneTimePreKey}
-`
-
-	registerNumberScript = `
-local identityToNumberKey = KEYS[1]
-local numberToIdentityKey = KEYS[2]
-local numberToShortNumberKey = KEYS[3]
-local shortNumberToNumberKey = KEYS[4]
-local lastRegistrationTimeKey = KEYS[5]
-local registrationTokensKey = KEYS[6]
-
-local identityKey = ARGV[1]
-local newNumber = ARGV[2]
-local newShortNumber = ARGV[3]
-local requiredTokens = tonumber(ARGV[4])
-
-local number = redis.call("hget", identityToNumberKey, identityKey)
-if number and number ~= nil and number ~= '' then
-	-- already registered
-	local shortNumber = redis.call("hget", numberToShortNumberKey, number)
-	return {number, shortNumber}
-end
-
-local existingIdentityKey = redis.call("hget", numberToIdentityKey, newNumber)
-if existingIdentityKey then
-	-- number already belongs to a different identity key
-	return -1
-end
-
--- rate limiting
-if requiredTokens > 0 then
-	local now = ARGV[5]
-	local lastRegistrationTime = redis.call("getset", lastRegistrationTimeKey, now)
-	if lastRegistrationTime then
-		local delta = now - lastRegistrationTime - requiredTokens
-		local availableTokens = redis.call("incrby", registrationTokensKey, delta)
-		if availableTokens < 0 then
-			-- This client needs to be rate limited, return the number of tokens we're short.
-			-- We do this prior to completing the registration. Once the client has slept the
-			-- necessary amount of time, it will call us again with rate limiting disabled in
-			-- order to complete the registration.
-			return -1 * availableTokens
-		end
-	end
-end
-
--- new registration
-redis.call("hset", identityToNumberKey, identityKey, newNumber)
-redis.call("hset", numberToIdentityKey, newNumber, identityKey)
-redis.call("hset", numberToShortNumberKey, newNumber, newShortNumber)
-redis.call("hset", shortNumberToNumberKey, newShortNumber, newNumber)
-
-return {newNumber, newShortNumber}
-`
-)
+//go:embed register_chat_number.lua
+var registerChatNumberScript []byte
 
 // New constructs a new Redis-backed DB that connects with the given client.
 func New(client *redis.Client) (db.DB, error) {
 	ctx, cancel := defaultContext()
 	defer cancel()
 
-	registerScriptSHA, err := client.ScriptLoad(ctx, registerScript).Result()
+	registerScriptSHA, err := client.ScriptLoad(ctx, string(registerScript)).Result()
 	if err != nil {
 		return nil, errors.New("unable to load registerScript: %v", err)
 	}
-	unregisterScriptSHA, err := client.ScriptLoad(ctx, unregisterScript).Result()
+	unregisterScriptSHA, err := client.ScriptLoad(ctx, string(unregisterScript)).Result()
 	if err != nil {
 		return nil, errors.New("unable to load unregisterScript: %v", err)
 	}
-	getPreKeyScriptSHA, err := client.ScriptLoad(ctx, getPreKeyScript).Result()
+	getPreKeyScriptSHA, err := client.ScriptLoad(ctx, string(getPreKeyScript)).Result()
 	if err != nil {
 		return nil, errors.New("unable to load getPreKeyScript: %v", err)
 	}
-	registerNumberScriptSHA, err := client.ScriptLoad(ctx, registerNumberScript).Result()
+	registerChatNumberScriptSHA, err := client.ScriptLoad(ctx, string(registerChatNumberScript)).Result()
 	if err != nil {
 		return nil, errors.New("unable to load registerNumberScript: %v", err)
 	}
 	return &redisDB{
-		client:                  client,
-		registerScriptSHA:       registerScriptSHA,
-		unregisterScriptSHA:     unregisterScriptSHA,
-		getPreKeyScriptSHA:      getPreKeyScriptSHA,
-		registerNumberScriptSHA: registerNumberScriptSHA,
+		client:                      client,
+		registerScriptSHA:           registerScriptSHA,
+		unregisterScriptSHA:         unregisterScriptSHA,
+		getPreKeyScriptSHA:          getPreKeyScriptSHA,
+		registerChatNumberScriptSHA: registerChatNumberScriptSHA,
 	}, nil
 }
 
 type redisDB struct {
-	client                  *redis.Client
-	registerScriptSHA       string
-	unregisterScriptSHA     string
-	getPreKeyScriptSHA      string
-	registerNumberScriptSHA string
+	client                      *redis.Client
+	registerScriptSHA           string
+	unregisterScriptSHA         string
+	getPreKeyScriptSHA          string
+	registerChatNumberScriptSHA string
 }
 
 func (d *redisDB) Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
@@ -347,7 +258,7 @@ func (d *redisDB) RegisterChatNumber(identityKey identity.PublicKey, newNumber s
 		registrationTokensKey}
 
 	result, err := d.client.EvalSha(ctx,
-		d.registerNumberScriptSHA,
+		d.registerChatNumberScriptSHA,
 		keys,
 		identityKeyString,
 		newNumber,
@@ -368,7 +279,7 @@ func (d *redisDB) RegisterChatNumber(identityKey identity.PublicKey, newNumber s
 
 			// after sleeping, we can register again, this time with rate limiting turned off
 			result, err = d.client.EvalSha(ctx,
-				d.registerNumberScriptSHA,
+				d.registerChatNumberScriptSHA,
 				keys,
 				identityKeyString,
 				newNumber,
