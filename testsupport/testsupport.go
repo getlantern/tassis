@@ -4,6 +4,8 @@ import (
 	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
+	"math"
+	"sync"
 	"time"
 
 	"github.com/getlantern/libmessaging-go/identity"
@@ -40,7 +42,7 @@ var (
 // TestService runs a comprehensive test of the service API. If testMultiClientMessaging is false, it will omit scenarios
 // that involve multiple recipient clients of the same messages. This is primarily used to avoid testing those scenarios on the
 // membroker, which can't support them.
-func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo presence.Repository, buildServiceAndDB func(t *testing.T, serverID int) (service.Service, db.DB)) {
+func TestService(t *testing.T, testMultiClientMessaging bool, testRateLimiting bool, presenceRepo presence.Repository, buildServiceAndDB func(t *testing.T, serverID int) (service.Service, db.DB)) {
 	servicesByID := make(map[int]service.Service, 0)
 	dbsByID := make(map[int]db.DB, 0)
 	s1, db1 := buildServiceAndDB(t, 1)
@@ -454,6 +456,26 @@ func TestService(t *testing.T, testMultiClientMessaging bool, presenceRepo prese
 		require.Equal(t, "backhome", string(inboundMsg.UnidentifiedSenderMessage))
 		clientC1.Send(mb.NewAck(msg))
 	})
+
+	if testRateLimiting {
+		t.Run("Test Chat Number registration rate limiting on login", func(t *testing.T) {
+			start := time.Now()
+			var wg sync.WaitGroup
+			wg.Add(100)
+			for i := 0; i < 100; i++ {
+				go func() {
+					kp, _ := GenerateKeyPair()
+					client := login(t, server1, kp.Public, []byte{1}, kp.Private)
+					wg.Done()
+					client.Close()
+				}()
+			}
+			wg.Wait()
+			delta := time.Since(start)
+			loginsPerSecond := 100 / delta.Seconds()
+			require.EqualValues(t, 2, math.Floor(loginsPerSecond), "Rate of logins should be around 2 per second")
+		})
+	}
 }
 
 // PrivateKey is an Ed25519 private key

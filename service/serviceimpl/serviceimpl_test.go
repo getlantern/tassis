@@ -43,5 +43,5 @@ func TestServiceInMemory(t *testing.T) {
 		return srvc, database
 	}
 
-	testsupport.TestService(t, false, presenceRepo, buildServiceAndDB)
+	testsupport.TestService(t, false, false, presenceRepo, buildServiceAndDB)
 }

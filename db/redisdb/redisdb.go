@@ -11,6 +11,7 @@ package redisdb
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"strings"
 	"time"
@@ -31,126 +32,68 @@ var (
 )
 
 const (
-	queryTimeout = 10 * time.Second
+	queryTimeout        = 10 * time.Second
+	registrationTimeout = 5 * time.Minute
+
+	// The below limits chat number registrations to an average of 2 per second, or a total of about 63 million per year
+	minMillisPerChatNumberRegistration = 500
+
+	identityToNumberKey     = "{global}identity->number"
+	numberToIdentityKey     = "{global}number->identity"
+	numberToShortNumberKey  = "{global}number->shortnumber"
+	shortNumberToNumberKey  = "{global}shortnumber->number"
+	lastRegistrationTimeKey = "{global}last-registration-time"
+	registrationTokensKey   = "{global}registration-tokens"
 )
 
-const (
-	registerScript = `
-local deviceKey = KEYS[1]
-local identityDevicesKey = KEYS[2]
-local oneTimePreKeysKey = KEYS[3]
+//go:embed register.lua
+var registerScript []byte
 
-local newSignedPreKey = ARGV[1]
-local deviceId = ARGV[2]
+//go:embed unregister.lua
+var unregisterScript []byte
 
-local oldSignedPreKey = redis.call("hget", deviceKey, "signedPreKey")
+//go:embed get_pre_key.lua
+var getPreKeyScript []byte
 
-redis.call("sadd", identityDevicesKey, deviceId)
-if newSignedPreKey ~= oldSignedPreKey then
-	redis.call("hset", deviceKey, "signedPreKey", newSignedPreKey)
-	redis.call("del", oneTimePreKeysKey)
-	return 0
-end
-
-return 1
-`
-
-	unregisterScript = `
-local deviceKey = KEYS[1]
-local identityDevicesKey = KEYS[2]
-local oneTimePreKeysKey = KEYS[3]
-
-local deviceId = ARGV[1]
-
-local remainingDevices = redis.call("scard", identityDevicesKey)
-if remainingDevices == 1 then
-	redis.call("del", identityDevicesKey)
-else
-	redis.call("srem", identityDevicesKey, deviceId)
-end
-
-redis.call("del", deviceKey, oneTimePreKeysKey)
-return 0
-`
-
-	getPreKeyScript = `
-local deviceKey = KEYS[1]
-local oneTimePreKeysKey = KEYS[2]
-
-local signedPreKey = redis.call("hget", deviceKey, "signedPreKey")
-local oneTimePreKey = redis.call("lpop", oneTimePreKeysKey)
-
-return {signedPreKey, oneTimePreKey}
-`
-
-	registerNumberScript = `
-local identityToNumberKey = KEYS[1]
-local numberToIdentityKey = KEYS[2]
-local numberToShortNumberKey = KEYS[3]
-local shortNumberToNumberKey = KEYS[4]
-
-local identityKey = ARGV[1]
-local newNumber = ARGV[2]
-local newShortNumber = ARGV[3]
-
-local number = redis.call("hget", identityToNumberKey, identityKey)
-if number and number ~= nil and number ~= '' then
-	-- already registered
-	local shortNumber = redis.call("hget", numberToShortNumberKey, number)
-	return {number, shortNumber}
-end
-
-local existingIdentityKey = redis.call("hget", numberToIdentityKey, newNumber)
-if existingIdentityKey then
-	-- number already belongs to a different identity key
-	return 1
-end
-
--- new registration
-redis.call("hset", identityToNumberKey, identityKey, newNumber)
-redis.call("hset", numberToIdentityKey, newNumber, identityKey)
-redis.call("hset", numberToShortNumberKey, newNumber, newShortNumber)
-redis.call("hset", shortNumberToNumberKey, newShortNumber, newNumber)
-return {newNumber, newShortNumber}
-`
-)
+//go:embed register_chat_number.lua
+var registerChatNumberScript []byte
 
 // New constructs a new Redis-backed DB that connects with the given client.
 func New(client *redis.Client) (db.DB, error) {
 	ctx, cancel := defaultContext()
 	defer cancel()
 
-	registerScriptSHA, err := client.ScriptLoad(ctx, registerScript).Result()
+	registerScriptSHA, err := client.ScriptLoad(ctx, string(registerScript)).Result()
 	if err != nil {
 		return nil, errors.New("unable to load registerScript: %v", err)
 	}
-	unregisterScriptSHA, err := client.ScriptLoad(ctx, unregisterScript).Result()
+	unregisterScriptSHA, err := client.ScriptLoad(ctx, string(unregisterScript)).Result()
 	if err != nil {
 		return nil, errors.New("unable to load unregisterScript: %v", err)
 	}
-	getPreKeyScriptSHA, err := client.ScriptLoad(ctx, getPreKeyScript).Result()
+	getPreKeyScriptSHA, err := client.ScriptLoad(ctx, string(getPreKeyScript)).Result()
 	if err != nil {
 		return nil, errors.New("unable to load getPreKeyScript: %v", err)
 	}
-	registerNumberScriptSHA, err := client.ScriptLoad(ctx, registerNumberScript).Result()
+	registerChatNumberScriptSHA, err := client.ScriptLoad(ctx, string(registerChatNumberScript)).Result()
 	if err != nil {
 		return nil, errors.New("unable to load registerNumberScript: %v", err)
 	}
 	return &redisDB{
-		client:                  client,
-		registerScriptSHA:       registerScriptSHA,
-		unregisterScriptSHA:     unregisterScriptSHA,
-		getPreKeyScriptSHA:      getPreKeyScriptSHA,
-		registerNumberScriptSHA: registerNumberScriptSHA,
+		client:                      client,
+		registerScriptSHA:           registerScriptSHA,
+		unregisterScriptSHA:         unregisterScriptSHA,
+		getPreKeyScriptSHA:          getPreKeyScriptSHA,
+		registerChatNumberScriptSHA: registerChatNumberScriptSHA,
 	}, nil
 }
 
 type redisDB struct {
-	client                  *redis.Client
-	registerScriptSHA       string
-	unregisterScriptSHA     string
-	getPreKeyScriptSHA      string
-	registerNumberScriptSHA string
+	client                      *redis.Client
+	registerScriptSHA           string
+	unregisterScriptSHA         string
+	getPreKeyScriptSHA          string
+	registerChatNumberScriptSHA string
 }
 
 func (d *redisDB) Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
@@ -303,18 +246,52 @@ func (d *redisDB) AllRegisteredDevices() ([]*model.Address, error) {
 func (d *redisDB) RegisterChatNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error) {
 	identityKeyString := identityKey.String()
 
-	ctx, cancel := defaultContext()
+	ctx, cancel := context.WithTimeout(context.Background(), registrationTimeout)
 	defer cancel()
 
+	keys := []string{
+		identityToNumberKey,
+		numberToIdentityKey,
+		numberToShortNumberKey,
+		shortNumberToNumberKey,
+		lastRegistrationTimeKey,
+		registrationTokensKey}
+
 	result, err := d.client.EvalSha(ctx,
-		d.registerNumberScriptSHA,
-		[]string{"identity->number", "number->identity", "number->shortnumber", "shortnumber->number"},
-		identityKeyString, newNumber, newShortNumber).Result()
+		d.registerChatNumberScriptSHA,
+		keys,
+		identityKeyString,
+		newNumber,
+		newShortNumber,
+		minMillisPerChatNumberRegistration,
+		time.Now().UnixMilli()).Result()
 	if err != nil {
 		return "", "", err
 	}
-	if result == int64(1) {
-		return "", "", model.ErrNumberTaken
+	r, resultIsInt64 := result.(int64)
+	if resultIsInt64 {
+		if r == -1 {
+			return "", "", model.ErrNumberTaken
+		} else {
+			sleepFor := time.Duration(r) * time.Millisecond
+			log.Debugf("Sleeping for %v to rate limit new chat number registration", sleepFor)
+			time.Sleep(sleepFor)
+
+			// after sleeping, we can register again, this time with rate limiting turned off
+			result, err = d.client.EvalSha(ctx,
+				d.registerChatNumberScriptSHA,
+				keys,
+				identityKeyString,
+				newNumber,
+				newShortNumber,
+				0).Result()
+			if err != nil {
+				return "", "", err
+			}
+			if result == int64(-1) {
+				return "", "", model.ErrNumberTaken
+			}
+		}
 	}
 
 	results := result.([]interface{})
@@ -325,7 +302,7 @@ func (d *redisDB) FindChatNumberByShortNumber(shortNumber string) (string, error
 	ctx, cancel := defaultContext()
 	defer cancel()
 
-	number, err := d.client.HGet(ctx, "shortnumber->number", shortNumber).Result()
+	number, err := d.client.HGet(ctx, shortNumberToNumberKey, shortNumber).Result()
 	if err != nil {
 		log.Errorf("error here: %v", err)
 		return "", err
@@ -342,7 +319,7 @@ func (d *redisDB) FindChatNumberByIdentityKey(identityKey identity.PublicKey) (s
 	ctx, cancel := defaultContext()
 	defer cancel()
 
-	number, err := d.client.HGet(ctx, "identity->number", identityKeyString).Result()
+	number, err := d.client.HGet(ctx, identityToNumberKey, identityKeyString).Result()
 	if err != nil {
 		return "", "", err
 	}
@@ -350,7 +327,7 @@ func (d *redisDB) FindChatNumberByIdentityKey(identityKey identity.PublicKey) (s
 		return "", "", model.ErrUnknownIdentity
 	}
 
-	shortNumber, err := d.client.HGet(ctx, "number->shortnumber", number).Result()
+	shortNumber, err := d.client.HGet(ctx, numberToShortNumberKey, number).Result()
 	if err != nil {
 		return "", "", err
 	}

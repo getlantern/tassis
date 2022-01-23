@@ -19,6 +19,7 @@ package redisbroker
 
 import (
 	"context"
+	_ "embed"
 	"strconv"
 	"strings"
 
@@ -38,6 +39,9 @@ var (
 	log = golog.LoggerFor("redisdb")
 )
 
+//go:embed ack.lua
+var ackScript []byte
+
 type redisBroker struct {
 	client             *redis.Client
 	subscriberRequests chan *subscriberRequest
@@ -47,7 +51,7 @@ type redisBroker struct {
 
 // New constructs a new Redis-backed Broker that connects with the given client.
 func New(client *redis.Client) (broker.Broker, error) {
-	ackScriptSHA, err := client.ScriptLoad(context.Background(), ackScript).Result()
+	ackScriptSHA, err := client.ScriptLoad(context.Background(), string(ackScript)).Result()
 	if err != nil {
 		return nil, errors.New("unable to load ackScript: %v", err)
 	}

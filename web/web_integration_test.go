@@ -19,7 +19,7 @@ import (
 )
 
 func TestWebSocketClientWithRealDatabaseAndBroker(t *testing.T) {
-	testWebSocketClient(t, true, func(id int) db.DB {
+	testWebSocketClient(t, true, true, func(id int) db.DB {
 		client := redis.NewClient(&redis.Options{
 			Addr:     "localhost:6379",
 			Password: "", // no password set

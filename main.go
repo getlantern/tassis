@@ -22,35 +22,35 @@ import (
 	"github.com/getlantern/tassis/db/redisdb"
 	"github.com/getlantern/tassis/presence/staticpresence"
 	"github.com/getlantern/tassis/service/serviceimpl"
-	"github.com/getlantern/tassis/testsupport"
 	"github.com/getlantern/tassis/web"
 )
 
 var (
 	// The below environment variables are passed by Heroku if deployed there
-	publicAddr         = os.Getenv("PUBLIC_ADDR")
-	chatNumberDomain   = os.Getenv("CHAT_NUMBER_DOMAIN")
-	httpPort           = os.Getenv("PORT")
-	pprofAddr          = os.Getenv("PPROF_ADDR")
-	redisURL           = os.Getenv("REDIS_URL")
-	redisPoolSize      = os.Getenv("REDIS_POOL_SIZE")
-	redisCAPEM         = os.Getenv("REDIS_CA_CERT")
-	redisClientCertPEM = os.Getenv("REDIS_CLIENT_CERT")
-	redisClientKeyPEM  = os.Getenv("REDIS_CLIENT_KEY")
-	awsAccessKeyID     = os.Getenv("AWS_ACCESS_KEY_ID")
-	awsSecretAccessKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
-	awsEndpoint        = os.Getenv("AWS_ENDPOINT")
-	awsRegion          = os.Getenv("AWS_REGION")
-	awsBucket          = os.Getenv("AWS_BUCKET")
-	checkKeysInterval  = flag.Duration("checkprekeys", 5*time.Minute, "how frequently to check if device is low on prekeys")
-	lowPreKeysLimit    = flag.Int("lowprekeyslimit", 10, "what number of prekeys ")
-	webTimeout         = flag.Duration("webtimeout", 60*time.Second, "timeout for web requests")
+	publicAddr          = os.Getenv("PUBLIC_ADDR")
+	chatNumberDomain    = os.Getenv("CHAT_NUMBER_DOMAIN")
+	httpPort            = os.Getenv("PORT")
+	pprofAddr           = os.Getenv("PPROF_ADDR")
+	redisURL            = os.Getenv("REDIS_URL")
+	redisPoolSize       = os.Getenv("REDIS_POOL_SIZE")
+	redisCAPEM          = os.Getenv("REDIS_CA_CERT")
+	redisClientCertPEM  = os.Getenv("REDIS_CLIENT_CERT")
+	redisClientKeyPEM   = os.Getenv("REDIS_CLIENT_KEY")
+	awsAccessKeyID      = os.Getenv("AWS_ACCESS_KEY_ID")
+	awsSecretAccessKey  = os.Getenv("AWS_SECRET_ACCESS_KEY")
+	awsEndpoint         = os.Getenv("AWS_ENDPOINT")
+	awsRegion           = os.Getenv("AWS_REGION")
+	awsBucket           = os.Getenv("AWS_BUCKET")
+	checkKeysInterval   = flag.Duration("checkprekeysinterval", 5*time.Minute, "how frequently to check if device is low on prekeys")
+	lowPreKeysLimit     = flag.Int("lowprekeyslimit", 10, "what number of prekeys to require before device is considered low on prekeys")
+	numPreKeysToRequest = flag.Int("numprekeystorequest", 10, "the number of prekeys to request from client when device is low")
+	webTimeout          = flag.Duration("webtimeout", 60*time.Second, "timeout for web requests")
 
 	log = golog.LoggerFor("tassis")
 )
 
 var (
-	redisURLRegExp = regexp.MustCompile(`^redis(s?)://:(.+)?@([^\s]+)$`)
+	redisURLRegExp = regexp.MustCompile(`^redis(s?)://.*:(.+)?@([^\s]+)$`)
 )
 
 func parseRedisURL(redisURL string) (useHTTPS bool, password string, redisAddr string, err error) {
@@ -155,9 +155,9 @@ func main() {
 		Broker:               b,
 		PresenceRepo:         staticpresence.NewRepository(publicAddr), // TODO: when ready to start using more than 1 tassis cluster, we'll need to replace this with a real presence implementation
 		AttachmentsManager:   attachmentsManager,                       // 100 MB
-		CheckPreKeysInterval: testsupport.CheckPreKeysInterval,
-		LowPreKeysLimit:      testsupport.LowPreKeysLimit,
-		NumPreKeysToRequest:  testsupport.NumPreKeysToRequest,
+		CheckPreKeysInterval: *checkKeysInterval,
+		LowPreKeysLimit:      *lowPreKeysLimit,
+		NumPreKeysToRequest:  *numPreKeysToRequest,
 	})
 	if err != nil {
 		log.Fatalf("unable to create service: %v", err)
@@ -172,22 +172,6 @@ func main() {
 		WriteTimeout: *webTimeout,
 	}
 	log.Fatal(srv.ListenAndServe())
-}
-
-func toDuration(duration string, onErr time.Duration) time.Duration {
-	if parsed, err := time.ParseDuration(duration); err != nil {
-		return onErr
-	} else {
-		return parsed
-	}
-}
-
-func toFloat(str string, onErr float64) float64 {
-	if f, err := strconv.ParseFloat(str, 64); err != nil {
-		return onErr
-	} else {
-		return f
-	}
 }
 
 func cleanPEMNewLines(pem string) []byte {
