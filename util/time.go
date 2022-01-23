@@ -25,5 +25,5 @@ func TimeFromMillis(millis int64) time.Time {
 
 // DurationSince returns the duration since the given time in millis
 func DurationSince(millis int64) time.Duration {
-	return time.Duration(int64(time.Now().Sub(TimeFromMillis(millis))))
+	return time.Duration(int64(time.Since(TimeFromMillis(millis))))
 }

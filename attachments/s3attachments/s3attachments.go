@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/getlantern/errors"
-	"github.com/getlantern/golog"
 	"github.com/getlantern/tassis/attachments"
 	"github.com/getlantern/tassis/model"
 	"github.com/getlantern/tassis/util"
@@ -38,10 +37,6 @@ const (
 	]
 }
 `
-)
-
-var (
-	log = golog.LoggerFor("s3attachments")
 )
 
 type manager struct {

@@ -13,7 +13,6 @@ import (
 type subscriber struct {
 	b                  *redisBroker
 	stream             string
-	offset             string
 	messagesOut        chan broker.Message
 	messagesIn         chan []*message
 	processedLastBatch chan interface{}
@@ -114,11 +113,10 @@ func (a *ack) ack() error {
 }
 
 type ack struct {
-	b       *redisBroker
-	stream  string
-	offset  string
-	errCh   chan error
-	ackOnce sync.Once
+	b      *redisBroker
+	stream string
+	offset string
+	errCh  chan error
 }
 
 type subscriberRequest struct {

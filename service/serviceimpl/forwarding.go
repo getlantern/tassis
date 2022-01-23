@@ -3,7 +3,7 @@ package serviceimpl
 import (
 	"time"
 
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/getlantern/errors"
 
