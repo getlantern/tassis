@@ -6,6 +6,15 @@ See [testsupport/testsupport.go](testsupport/testsupport.go) for a fairly full u
 
 Comprehensive user documentation, including message formats, is in [docs](docs/README.md).
 
+## Redis Clustering
+tassis is designed to run on [Redis Cluster](https://redis.io/topics/cluster-spec). That means that we need to pay attention to key distribution (see section "Keys hash tags" of the [Redis Cluster Spec](https://redis.io/topics/cluster-spec)).
+
+### Global Keys
+Global keys like the index of all chat numbers us the hash tag `{global}`.
+
+### Identity-specific Keys
+Identity specific keys like that inbound messages for a given identity use `{identityKey}` as the hash tag.
+
 ## Protocol Buffers
 This project uses protocol buffers. Follow the [tutorial](https://developers.google.com/protocol-buffers/docs/gotutorial) to ensure that you have the right tools in place, then run `make` to ensure the protocol buffers are up to date.
 
