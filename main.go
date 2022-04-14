@@ -22,6 +22,7 @@ import (
 	"github.com/getlantern/tassis/db/redisdb"
 	"github.com/getlantern/tassis/presence/staticpresence"
 	"github.com/getlantern/tassis/service/serviceimpl"
+	"github.com/getlantern/tassis/telemetry"
 	"github.com/getlantern/tassis/web"
 )
 
@@ -62,6 +63,9 @@ func parseRedisURL(redisURL string) (useHTTPS bool, password string, redisAddr s
 }
 
 func main() {
+	stopTelemetry := telemetry.Start()
+	defer stopTelemetry()
+
 	flag.Parse()
 
 	if pprofAddr != "" {

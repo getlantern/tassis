@@ -15,6 +15,7 @@ import (
 
 	"github.com/getlantern/errors"
 	"github.com/getlantern/golog"
+	"github.com/getlantern/ops"
 
 	"github.com/getlantern/libmessaging-go/encoding"
 	"github.com/getlantern/libmessaging-go/identity"
@@ -305,11 +306,7 @@ func (conn *clientConnection) startHandlingInbound() error {
 			case <-conn.closeCh:
 				return
 			case brokerMsg := <-ch:
-				msg := conn.mb.Build(&model.Message_InboundMessage{InboundMessage: &model.InboundMessage{UnidentifiedSenderMessage: brokerMsg.Data()}})
-				conn.unackedMessageMx.Lock()
-				conn.unackedMessages[msg.Sequence] = brokerMsg.Acker()
-				conn.unackedMessageMx.Unlock()
-				conn.in <- msg
+				conn.handleInboundMessage(brokerMsg)
 			}
 		}
 	}()
@@ -317,67 +314,85 @@ func (conn *clientConnection) startHandlingInbound() error {
 	return nil
 }
 
+func (conn *clientConnection) handleInboundMessage(brokerMsg broker.Message) {
+	op := ops.Begin("service.inbound_message")
+	defer op.End()
+
+	msg := conn.mb.Build(&model.Message_InboundMessage{InboundMessage: &model.InboundMessage{UnidentifiedSenderMessage: brokerMsg.Data()}})
+	conn.unackedMessageMx.Lock()
+	conn.unackedMessages[msg.Sequence] = brokerMsg.Acker()
+	conn.unackedMessageMx.Unlock()
+	conn.in <- msg
+}
+
 func (conn *clientConnection) handleOutbound() {
 	defer conn.Close()
 
 	for msg := range conn.out {
-		var err error
-		switch msg.Payload.(type) {
-		case *model.Message_Ack:
-			conn.handleACK(msg)
-		case *model.Message_AuthResponse:
-			if conn.isAuthenticated() {
-				err = model.ErrNonAnonymous
-			} else {
-				conn.handleAuthResponse(msg)
-			}
-		case *model.Message_Register:
-			if !conn.isAuthenticated() {
-				err = model.ErrUnauthorized
-			} else {
-				conn.handleRegister(msg)
-			}
-		case *model.Message_Unregister:
-			if !conn.isAuthenticated() {
-				err = model.ErrUnauthorized
-			} else {
-				conn.handleUnregister(msg)
-			}
-		case *model.Message_RequestPreKeys:
-			if conn.isAuthenticated() {
-				err = model.ErrNonAnonymous
-			} else {
-				conn.handleRequestPreKeys(msg)
-			}
-		case *model.Message_RequestUploadAuthorizations:
-			if conn.isAuthenticated() {
-				err = model.ErrNonAnonymous
-			} else {
-				conn.handleRequestUploadAuthorizations(msg)
-			}
-		case *model.Message_FindChatNumberByShortNumber:
-			if conn.isAuthenticated() {
-				err = model.ErrNonAnonymous
-			} else {
-				conn.handleFindChatNumberByShortNumber(msg)
-			}
-		case *model.Message_FindChatNumberByIdentityKey:
-			if conn.isAuthenticated() {
-				err = model.ErrNonAnonymous
-			} else {
-				conn.handleFindChatNumberByIdentityKey(msg)
-			}
-		case *model.Message_OutboundMessage:
-			if conn.isAuthenticated() {
-				err = model.ErrNonAnonymous
-			} else {
-				conn.handleOutboundMessage(msg)
-			}
+		conn.doHandleOutboundMessage(msg)
+	}
+}
+
+func (conn *clientConnection) doHandleOutboundMessage(msg *model.Message) {
+	op := ops.Begin("service.outbound_message")
+	defer op.End()
+
+	var err error
+	switch msg.Payload.(type) {
+	case *model.Message_Ack:
+		conn.handleACK(msg)
+	case *model.Message_AuthResponse:
+		if conn.isAuthenticated() {
+			err = model.ErrNonAnonymous
+		} else {
+			conn.handleAuthResponse(msg)
 		}
-		if err != nil {
-			log.Error(err)
-			conn.in <- conn.mb.NewError(msg, model.TypedError(err))
+	case *model.Message_Register:
+		if !conn.isAuthenticated() {
+			err = model.ErrUnauthorized
+		} else {
+			conn.handleRegister(msg)
 		}
+	case *model.Message_Unregister:
+		if !conn.isAuthenticated() {
+			err = model.ErrUnauthorized
+		} else {
+			conn.handleUnregister(msg)
+		}
+	case *model.Message_RequestPreKeys:
+		if conn.isAuthenticated() {
+			err = model.ErrNonAnonymous
+		} else {
+			conn.handleRequestPreKeys(msg)
+		}
+	case *model.Message_RequestUploadAuthorizations:
+		if conn.isAuthenticated() {
+			err = model.ErrNonAnonymous
+		} else {
+			conn.handleRequestUploadAuthorizations(msg)
+		}
+	case *model.Message_FindChatNumberByShortNumber:
+		if conn.isAuthenticated() {
+			err = model.ErrNonAnonymous
+		} else {
+			conn.handleFindChatNumberByShortNumber(msg)
+		}
+	case *model.Message_FindChatNumberByIdentityKey:
+		if conn.isAuthenticated() {
+			err = model.ErrNonAnonymous
+		} else {
+			conn.handleFindChatNumberByIdentityKey(msg)
+		}
+	case *model.Message_OutboundMessage:
+		if conn.isAuthenticated() {
+			err = model.ErrNonAnonymous
+		} else {
+			conn.sendOutboundMessage(msg)
+		}
+	}
+	if err != nil {
+		op.FailIf(log.Error(err))
+		conn.in <- conn.mb.NewError(msg, model.TypedError(err))
 	}
 }
 
@@ -387,19 +402,22 @@ func (conn *clientConnection) sendInitMessages() {
 }
 
 func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
+	op := ops.Begin("service.auth_response")
+	defer op.End()
+
 	// unpack auth response
 	authResponse := msg.GetAuthResponse()
 	login := &model.Login{}
 	err := proto.Unmarshal(authResponse.Login, login)
 	if err != nil {
-		conn.error(msg, err)
+		conn.error(op, msg, err)
 		conn.Close()
 		return
 	}
 
 	// verify nonce
 	if subtle.ConstantTimeCompare(conn.authNonce, login.Nonce) != 1 {
-		conn.error(msg, model.ErrUnauthorized)
+		conn.error(op, msg, model.ErrUnauthorized)
 		conn.Close()
 		return
 	}
@@ -408,7 +426,7 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	address := login.Address
 	identityKey := identity.PublicKey(address.IdentityKey)
 	if !identityKey.Verify(authResponse.Login, authResponse.Signature) {
-		conn.error(msg, model.ErrUnauthorized)
+		conn.error(op, msg, model.ErrUnauthorized)
 		conn.Close()
 		return
 	}
@@ -419,13 +437,13 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	// get the number
 	number, shortNumber, err := conn.getNumber()
 	if err != nil {
-		conn.error(msg, err)
+		conn.error(op, msg, err)
 		conn.Close()
 	}
 
 	err = conn.startHandlingInbound()
 	if err != nil {
-		conn.error(msg, err)
+		conn.error(op, msg, err)
 		return
 	}
 	if conn.srvc.checkPreKeysInterval > 0 {
@@ -483,19 +501,22 @@ func (conn *clientConnection) getNumber() (string, string, error) {
 }
 
 func (conn *clientConnection) handleACK(msg *model.Message) {
+	op := ops.Begin("service.ack")
+	defer op.End()
+
 	sequence := msg.Sequence
 	conn.unackedMessageMx.Lock()
 	acker, found := conn.unackedMessages[sequence]
 	conn.unackedMessageMx.Unlock()
 
 	if !found {
-		log.Errorf("no ack found for sequence %d", sequence)
+		op.FailIf(log.Errorf("no ack found for sequence %d", sequence))
 		return
 	}
 
 	err := acker()
 	if err != nil {
-		log.Error(err)
+		op.FailIf(log.Error(err))
 		return
 	}
 	conn.unackedMessageMx.Lock()
@@ -504,19 +525,22 @@ func (conn *clientConnection) handleACK(msg *model.Message) {
 }
 
 func (conn *clientConnection) handleRegister(msg *model.Message) {
+	op := ops.Begin("service.register")
+	defer op.End()
+
 	identityKey, deviceId := conn.getIdentityKey(), conn.getDeviceId()
 
 	register := msg.GetRegister()
 
 	err := conn.srvc.presenceRepo.Announce(&model.Address{IdentityKey: identityKey, DeviceId: deviceId}, conn.srvc.publicAddr)
 	if err != nil {
-		conn.error(msg, err)
+		conn.error(op, msg, err)
 		return
 	}
 
 	err = conn.srvc.db.Register(identityKey, deviceId, register)
 	if err != nil {
-		conn.error(msg, err)
+		conn.error(op, msg, err)
 		return
 	}
 
@@ -524,21 +548,27 @@ func (conn *clientConnection) handleRegister(msg *model.Message) {
 }
 
 func (conn *clientConnection) handleUnregister(msg *model.Message) {
+	op := ops.Begin("service.unregister")
+	defer op.End()
+
 	err := conn.srvc.db.Unregister(conn.getIdentityKey(), conn.getDeviceId())
 	if err != nil {
-		conn.error(msg, err)
+		conn.error(op, msg, err)
 		return
 	}
 	conn.ack(msg)
 }
 
 func (conn *clientConnection) handleRequestPreKeys(msg *model.Message) {
+	op := ops.Begin("service.request_pre_keys")
+	defer op.End()
+
 	request := msg.GetRequestPreKeys()
 
 	// Get as many pre-keys as we can and handle the errors in here
 	preKeys, err := conn.srvc.db.RequestPreKeys(request)
 	if err != nil {
-		conn.error(msg, err)
+		conn.error(op, msg, err)
 		return
 	}
 
@@ -550,6 +580,9 @@ func (conn *clientConnection) handleRequestPreKeys(msg *model.Message) {
 }
 
 func (conn *clientConnection) handleRequestUploadAuthorizations(msg *model.Message) {
+	op := ops.Begin("service.request_upload_authorizations")
+	defer op.End()
+
 	request := msg.GetRequestUploadAuthorizations()
 
 	// Get as many authorizations as we can
@@ -564,7 +597,7 @@ func (conn *clientConnection) handleRequestUploadAuthorizations(msg *model.Messa
 		}
 	}
 	if len(uploadAuthorizations.Authorizations) == 0 {
-		conn.error(msg, finalErr)
+		conn.error(op, msg, finalErr)
 		return
 	}
 
@@ -576,10 +609,13 @@ func (conn *clientConnection) handleRequestUploadAuthorizations(msg *model.Messa
 }
 
 func (conn *clientConnection) handleFindChatNumberByShortNumber(msg *model.Message) {
+	op := ops.Begin("service.find_chat_number_by_short_number")
+	defer op.End()
+
 	shortNumber := msg.GetFindChatNumberByShortNumber().ShortNumber
 	number, err := conn.srvc.db.FindChatNumberByShortNumber(shortNumber)
 	if err != nil {
-		conn.error(msg, err)
+		conn.error(op, msg, err)
 		return
 	}
 
@@ -597,10 +633,13 @@ func (conn *clientConnection) handleFindChatNumberByShortNumber(msg *model.Messa
 }
 
 func (conn *clientConnection) handleFindChatNumberByIdentityKey(msg *model.Message) {
+	op := ops.Begin("service.find_chat_number_by_identity_key")
+	defer op.End()
+
 	identityKey := msg.GetFindChatNumberByIdentityKey().IdentityKey
 	number, shortNumber, err := conn.srvc.db.FindChatNumberByIdentityKey(identityKey)
 	if err != nil {
-		conn.error(msg, err)
+		conn.error(op, msg, err)
 		return
 	}
 
@@ -617,12 +656,15 @@ func (conn *clientConnection) handleFindChatNumberByIdentityKey(msg *model.Messa
 	conn.send(outMsg)
 }
 
-func (conn *clientConnection) handleOutboundMessage(msg *model.Message) {
+func (conn *clientConnection) sendOutboundMessage(msg *model.Message) {
+	op := ops.Begin("service.send_outbound_message")
+	defer op.End()
+
 	outboundMessage := msg.GetOutboundMessage()
 
 	tassisHost, err := conn.srvc.presenceRepo.Find(outboundMessage.To)
 	if err != nil {
-		conn.error(msg, err)
+		conn.error(op, msg, err)
 		return
 	}
 	tassisHost = strings.ToLower(tassisHost)
@@ -636,7 +678,7 @@ func (conn *clientConnection) handleOutboundMessage(msg *model.Message) {
 			Message: outboundMessage,
 		})
 		if err != nil {
-			conn.error(msg, err)
+			conn.error(op, msg, err)
 			return
 		}
 	}
@@ -644,12 +686,12 @@ func (conn *clientConnection) handleOutboundMessage(msg *model.Message) {
 	// publish
 	publisher, err := conn.srvc.publisherFor(topic)
 	if err != nil {
-		conn.error(msg, err)
+		conn.error(op, msg, err)
 		return
 	}
 	err = publisher.Publish(data)
 	if err != nil {
-		conn.error(msg, err)
+		conn.error(op, msg, err)
 		return
 	}
 	conn.ack(msg)
@@ -682,8 +724,8 @@ func (conn *clientConnection) ack(msg *model.Message) {
 	conn.send(conn.mb.NewAck(msg))
 }
 
-func (conn *clientConnection) error(msg *model.Message, err error) {
-	log.Error(err)
+func (conn *clientConnection) error(op ops.Op, msg *model.Message, err error) {
+	op.FailIf(log.Error(err))
 	conn.send(conn.mb.NewError(msg, model.TypedError(err)))
 }
 

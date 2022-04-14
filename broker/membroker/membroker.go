@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/getlantern/ops"
 	"github.com/getlantern/tassis/broker"
 )
 
@@ -22,6 +23,9 @@ type topic struct {
 }
 
 func (t *topic) Publish(msg []byte) error {
+	op := ops.Begin("membroker.publish")
+	defer op.End()
+
 	t.mx.Lock()
 	defer t.mx.Unlock()
 
