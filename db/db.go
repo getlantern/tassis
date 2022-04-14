@@ -1,6 +1,8 @@
 package db
 
 import (
+	"context"
+
 	"github.com/getlantern/libmessaging-go/identity"
 	"github.com/getlantern/tassis/model"
 )
@@ -9,7 +11,7 @@ var ()
 
 // DB represents a database that can store user registration information
 type DB interface {
-	Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error
+	Register(ctx context.Context, identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error
 
 	Unregister(identityKey identity.PublicKey, deviceId []byte) error
 

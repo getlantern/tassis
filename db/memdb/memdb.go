@@ -2,12 +2,18 @@
 package memdb
 
 import (
+	"context"
 	"crypto/subtle"
 	"sync"
 
 	"github.com/getlantern/libmessaging-go/identity"
 	"github.com/getlantern/tassis/db"
 	"github.com/getlantern/tassis/model"
+	"go.opentelemetry.io/otel"
+)
+
+var (
+	tracer = otel.Tracer("memdb")
 )
 
 func New() db.DB {
@@ -29,7 +35,10 @@ type memdb struct {
 	mx                  sync.Mutex
 }
 
-func (d *memdb) Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
+func (d *memdb) Register(ctx context.Context, identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
+	_, span := tracer.Start(ctx, "Register")
+	defer span.End()
+
 	identityKeyString := identityKey.String()
 
 	d.mx.Lock()
