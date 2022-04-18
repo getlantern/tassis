@@ -20,6 +20,7 @@ import (
 
 	"github.com/getlantern/errors"
 	"github.com/getlantern/golog"
+	"github.com/getlantern/ops"
 
 	"github.com/getlantern/libmessaging-go/encoding"
 	"github.com/getlantern/libmessaging-go/identity"
@@ -97,6 +98,9 @@ type redisDB struct {
 }
 
 func (d *redisDB) Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
+	op := ops.Begin("redisdb.register")
+	defer op.End()
+
 	deviceKey := deviceKey(identityKey, deviceId)
 	idDevicesKey := identityDevicesKey(identityKey)
 	oneTimePreKeysKey := oneTimePreKeysKey(deviceKey)
@@ -122,6 +126,9 @@ func (d *redisDB) Register(identityKey identity.PublicKey, deviceId []byte, regi
 }
 
 func (d *redisDB) Unregister(identityKey identity.PublicKey, deviceId []byte) error {
+	op := ops.Begin("redisdb.unregister")
+	defer op.End()
+
 	deviceKey := deviceKey(identityKey, deviceId)
 	idDevicesKey := identityDevicesKey(identityKey)
 	oneTimePreKeysKey := oneTimePreKeysKey(deviceKey)
@@ -136,6 +143,9 @@ func (d *redisDB) Unregister(identityKey identity.PublicKey, deviceId []byte) er
 }
 
 func (d *redisDB) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, error) {
+	op := ops.Begin("redisdb.request_pre_keys")
+	defer op.End()
+
 	idDevicesKey := identityDevicesKey(request.IdentityKey)
 
 	ctx, cancel := defaultContext()
@@ -197,6 +207,9 @@ deviceLoop:
 }
 
 func (d *redisDB) PreKeysRemaining(identityKey identity.PublicKey, deviceId []byte) (int, error) {
+	op := ops.Begin("redisdb.pre_keys_remaining")
+	defer op.End()
+
 	deviceKey := deviceKey(identityKey, deviceId)
 	oneTimePreKeysKey := oneTimePreKeysKey(deviceKey)
 
@@ -220,6 +233,9 @@ func (d *redisDB) PreKeysRemaining(identityKey identity.PublicKey, deviceId []by
 }
 
 func (d *redisDB) AllRegisteredDevices() ([]*model.Address, error) {
+	op := ops.Begin("redisdb.all_registered_devices")
+	defer op.End()
+
 	ctx, cancel := defaultContext()
 	defer cancel()
 
@@ -244,6 +260,9 @@ func (d *redisDB) AllRegisteredDevices() ([]*model.Address, error) {
 }
 
 func (d *redisDB) RegisterChatNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error) {
+	op := ops.Begin("redisdb.register_chat_number")
+	defer op.End()
+
 	identityKeyString := identityKey.String()
 
 	ctx, cancel := context.WithTimeout(context.Background(), registrationTimeout)
@@ -299,6 +318,9 @@ func (d *redisDB) RegisterChatNumber(identityKey identity.PublicKey, newNumber s
 }
 
 func (d *redisDB) FindChatNumberByShortNumber(shortNumber string) (string, error) {
+	op := ops.Begin("redisdb.find_chat_number_by_short_number")
+	defer op.End()
+
 	ctx, cancel := defaultContext()
 	defer cancel()
 
@@ -314,6 +336,9 @@ func (d *redisDB) FindChatNumberByShortNumber(shortNumber string) (string, error
 }
 
 func (d *redisDB) FindChatNumberByIdentityKey(identityKey identity.PublicKey) (string, string, error) {
+	op := ops.Begin("redisdb.find_chat_number_by_identity_key")
+	defer op.End()
+
 	identityKeyString := identityKey.String()
 
 	ctx, cancel := defaultContext()

@@ -27,6 +27,7 @@ import (
 
 	"github.com/getlantern/errors"
 	"github.com/getlantern/golog"
+	"github.com/getlantern/ops"
 	"github.com/getlantern/tassis/broker"
 )
 
@@ -80,6 +81,9 @@ type publisher struct {
 }
 
 func (pub *publisher) Publish(data []byte) error {
+	op := ops.Begin("redisbroker.publish")
+	defer op.End()
+
 	ctx := context.Background()
 	return pub.b.client.XAdd(ctx, &redis.XAddArgs{
 		Stream: pub.stream,

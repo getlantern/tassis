@@ -13,6 +13,8 @@ import (
 	"github.com/getlantern/tassis/model"
 	"github.com/getlantern/tassis/presence"
 	"github.com/getlantern/tassis/service"
+	"github.com/getlantern/tassis/telemetry"
+
 	"github.com/jorrizza/ed2curve25519"
 	"google.golang.org/protobuf/proto"
 
@@ -43,6 +45,9 @@ var (
 // that involve multiple recipient clients of the same messages. This is primarily used to avoid testing those scenarios on the
 // membroker, which can't support them.
 func TestService(t *testing.T, testMultiClientMessaging bool, testRateLimiting bool, presenceRepo presence.Repository, buildServiceAndDB func(t *testing.T, serverID int) (service.Service, db.DB)) {
+	stopTelemetry := telemetry.Start()
+	defer stopTelemetry()
+
 	servicesByID := make(map[int]service.Service, 0)
 	dbsByID := make(map[int]db.DB, 0)
 	s1, db1 := buildServiceAndDB(t, 1)
