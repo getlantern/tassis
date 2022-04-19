@@ -11,11 +11,12 @@ import (
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/getlantern/errors"
 	"github.com/getlantern/golog"
-	"github.com/getlantern/ops"
+	"github.com/getlantern/trace"
 
 	"github.com/getlantern/libmessaging-go/encoding"
 	"github.com/getlantern/libmessaging-go/identity"
@@ -30,7 +31,8 @@ import (
 )
 
 var (
-	log = golog.LoggerFor("service")
+	log    = golog.LoggerFor("service")
+	tracer = trace.NewTracer("service")
 )
 
 type Opts struct {
@@ -315,8 +317,8 @@ func (conn *clientConnection) startHandlingInbound() error {
 }
 
 func (conn *clientConnection) handleInboundMessage(brokerMsg broker.Message) {
-	op := ops.Begin("service.inbound_message")
-	defer op.End()
+	_, span := tracer.Continue("inbound_message")
+	defer span.End()
 
 	msg := conn.mb.Build(&model.Message_InboundMessage{InboundMessage: &model.InboundMessage{UnidentifiedSenderMessage: brokerMsg.Data()}})
 	conn.unackedMessageMx.Lock()
@@ -334,8 +336,8 @@ func (conn *clientConnection) handleOutbound() {
 }
 
 func (conn *clientConnection) doHandleOutboundMessage(msg *model.Message) {
-	op := ops.Begin("service.outbound_message")
-	defer op.End()
+	_, span := tracer.Continue("outbound_message")
+	defer span.End()
 
 	var err error
 	switch msg.Payload.(type) {
@@ -391,7 +393,7 @@ func (conn *clientConnection) doHandleOutboundMessage(msg *model.Message) {
 		}
 	}
 	if err != nil {
-		op.FailIf(log.Error(err))
+		span.RecordError(log.Error(err))
 		conn.in <- conn.mb.NewError(msg, model.TypedError(err))
 	}
 }
@@ -402,22 +404,22 @@ func (conn *clientConnection) sendInitMessages() {
 }
 
 func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
-	op := ops.Begin("service.auth_response")
-	defer op.End()
+	_, span := tracer.Continue("auth_response")
+	defer span.End()
 
 	// unpack auth response
 	authResponse := msg.GetAuthResponse()
 	login := &model.Login{}
 	err := proto.Unmarshal(authResponse.Login, login)
 	if err != nil {
-		conn.error(op, msg, err)
+		conn.error(span, msg, err)
 		conn.Close()
 		return
 	}
 
 	// verify nonce
 	if subtle.ConstantTimeCompare(conn.authNonce, login.Nonce) != 1 {
-		conn.error(op, msg, model.ErrUnauthorized)
+		conn.error(span, msg, model.ErrUnauthorized)
 		conn.Close()
 		return
 	}
@@ -426,7 +428,7 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	address := login.Address
 	identityKey := identity.PublicKey(address.IdentityKey)
 	if !identityKey.Verify(authResponse.Login, authResponse.Signature) {
-		conn.error(op, msg, model.ErrUnauthorized)
+		conn.error(span, msg, model.ErrUnauthorized)
 		conn.Close()
 		return
 	}
@@ -437,13 +439,13 @@ func (conn *clientConnection) handleAuthResponse(msg *model.Message) {
 	// get the number
 	number, shortNumber, err := conn.getNumber()
 	if err != nil {
-		conn.error(op, msg, err)
+		conn.error(span, msg, err)
 		conn.Close()
 	}
 
 	err = conn.startHandlingInbound()
 	if err != nil {
-		conn.error(op, msg, err)
+		conn.error(span, msg, err)
 		return
 	}
 	if conn.srvc.checkPreKeysInterval > 0 {
@@ -501,8 +503,8 @@ func (conn *clientConnection) getNumber() (string, string, error) {
 }
 
 func (conn *clientConnection) handleACK(msg *model.Message) {
-	op := ops.Begin("service.ack")
-	defer op.End()
+	_, span := tracer.Continue("ack")
+	defer span.End()
 
 	sequence := msg.Sequence
 	conn.unackedMessageMx.Lock()
@@ -510,13 +512,13 @@ func (conn *clientConnection) handleACK(msg *model.Message) {
 	conn.unackedMessageMx.Unlock()
 
 	if !found {
-		op.FailIf(log.Errorf("no ack found for sequence %d", sequence))
+		span.RecordError(log.Errorf("no ack found for sequence %d", sequence))
 		return
 	}
 
 	err := acker()
 	if err != nil {
-		op.FailIf(log.Error(err))
+		span.RecordError(log.Error(err))
 		return
 	}
 	conn.unackedMessageMx.Lock()
@@ -525,8 +527,8 @@ func (conn *clientConnection) handleACK(msg *model.Message) {
 }
 
 func (conn *clientConnection) handleRegister(msg *model.Message) {
-	op := ops.Begin("service.register")
-	defer op.End()
+	_, span := tracer.Continue("register")
+	defer span.End()
 
 	identityKey, deviceId := conn.getIdentityKey(), conn.getDeviceId()
 
@@ -534,13 +536,13 @@ func (conn *clientConnection) handleRegister(msg *model.Message) {
 
 	err := conn.srvc.presenceRepo.Announce(&model.Address{IdentityKey: identityKey, DeviceId: deviceId}, conn.srvc.publicAddr)
 	if err != nil {
-		conn.error(op, msg, err)
+		conn.error(span, msg, err)
 		return
 	}
 
 	err = conn.srvc.db.Register(identityKey, deviceId, register)
 	if err != nil {
-		conn.error(op, msg, err)
+		conn.error(span, msg, err)
 		return
 	}
 
@@ -548,27 +550,27 @@ func (conn *clientConnection) handleRegister(msg *model.Message) {
 }
 
 func (conn *clientConnection) handleUnregister(msg *model.Message) {
-	op := ops.Begin("service.unregister")
-	defer op.End()
+	_, span := tracer.Continue("unregister")
+	defer span.End()
 
 	err := conn.srvc.db.Unregister(conn.getIdentityKey(), conn.getDeviceId())
 	if err != nil {
-		conn.error(op, msg, err)
+		conn.error(span, msg, err)
 		return
 	}
 	conn.ack(msg)
 }
 
 func (conn *clientConnection) handleRequestPreKeys(msg *model.Message) {
-	op := ops.Begin("service.request_pre_keys")
-	defer op.End()
+	_, span := tracer.Continue("request_pre_keys")
+	defer span.End()
 
 	request := msg.GetRequestPreKeys()
 
 	// Get as many pre-keys as we can and handle the errors in here
 	preKeys, err := conn.srvc.db.RequestPreKeys(request)
 	if err != nil {
-		conn.error(op, msg, err)
+		conn.error(span, msg, err)
 		return
 	}
 
@@ -580,8 +582,8 @@ func (conn *clientConnection) handleRequestPreKeys(msg *model.Message) {
 }
 
 func (conn *clientConnection) handleRequestUploadAuthorizations(msg *model.Message) {
-	op := ops.Begin("service.request_upload_authorizations")
-	defer op.End()
+	_, span := tracer.Continue("request_upload_authorizations")
+	defer span.End()
 
 	request := msg.GetRequestUploadAuthorizations()
 
@@ -597,7 +599,7 @@ func (conn *clientConnection) handleRequestUploadAuthorizations(msg *model.Messa
 		}
 	}
 	if len(uploadAuthorizations.Authorizations) == 0 {
-		conn.error(op, msg, finalErr)
+		conn.error(span, msg, finalErr)
 		return
 	}
 
@@ -609,13 +611,13 @@ func (conn *clientConnection) handleRequestUploadAuthorizations(msg *model.Messa
 }
 
 func (conn *clientConnection) handleFindChatNumberByShortNumber(msg *model.Message) {
-	op := ops.Begin("service.find_chat_number_by_short_number")
-	defer op.End()
+	_, span := tracer.Continue("find_chat_number_by_short_number")
+	defer span.End()
 
 	shortNumber := msg.GetFindChatNumberByShortNumber().ShortNumber
 	number, err := conn.srvc.db.FindChatNumberByShortNumber(shortNumber)
 	if err != nil {
-		conn.error(op, msg, err)
+		conn.error(span, msg, err)
 		return
 	}
 
@@ -633,13 +635,13 @@ func (conn *clientConnection) handleFindChatNumberByShortNumber(msg *model.Messa
 }
 
 func (conn *clientConnection) handleFindChatNumberByIdentityKey(msg *model.Message) {
-	op := ops.Begin("service.find_chat_number_by_identity_key")
-	defer op.End()
+	_, span := tracer.Continue("find_chat_number_by_identity_key")
+	defer span.End()
 
 	identityKey := msg.GetFindChatNumberByIdentityKey().IdentityKey
 	number, shortNumber, err := conn.srvc.db.FindChatNumberByIdentityKey(identityKey)
 	if err != nil {
-		conn.error(op, msg, err)
+		conn.error(span, msg, err)
 		return
 	}
 
@@ -657,14 +659,14 @@ func (conn *clientConnection) handleFindChatNumberByIdentityKey(msg *model.Messa
 }
 
 func (conn *clientConnection) sendOutboundMessage(msg *model.Message) {
-	op := ops.Begin("service.send_outbound_message")
-	defer op.End()
+	_, span := tracer.Continue("send_outbound_message")
+	defer span.End()
 
 	outboundMessage := msg.GetOutboundMessage()
 
 	tassisHost, err := conn.srvc.presenceRepo.Find(outboundMessage.To)
 	if err != nil {
-		conn.error(op, msg, err)
+		conn.error(span, msg, err)
 		return
 	}
 	tassisHost = strings.ToLower(tassisHost)
@@ -678,7 +680,7 @@ func (conn *clientConnection) sendOutboundMessage(msg *model.Message) {
 			Message: outboundMessage,
 		})
 		if err != nil {
-			conn.error(op, msg, err)
+			conn.error(span, msg, err)
 			return
 		}
 	}
@@ -686,12 +688,12 @@ func (conn *clientConnection) sendOutboundMessage(msg *model.Message) {
 	// publish
 	publisher, err := conn.srvc.publisherFor(topic)
 	if err != nil {
-		conn.error(op, msg, err)
+		conn.error(span, msg, err)
 		return
 	}
 	err = publisher.Publish(data)
 	if err != nil {
-		conn.error(op, msg, err)
+		conn.error(span, msg, err)
 		return
 	}
 	conn.ack(msg)
@@ -724,8 +726,8 @@ func (conn *clientConnection) ack(msg *model.Message) {
 	conn.send(conn.mb.NewAck(msg))
 }
 
-func (conn *clientConnection) error(op ops.Op, msg *model.Message, err error) {
-	op.FailIf(log.Error(err))
+func (conn *clientConnection) error(span oteltrace.Span, msg *model.Message, err error) {
+	span.RecordError(log.Error(err))
 	conn.send(conn.mb.NewError(msg, model.TypedError(err)))
 }
 

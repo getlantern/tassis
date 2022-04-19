@@ -8,7 +8,7 @@ require (
 	github.com/getlantern/errors v1.0.1
 	github.com/getlantern/golog v0.0.0-20201105130739-9586b8bde3a9
 	github.com/getlantern/libmessaging-go v0.0.0-20211102124917-057375a3d4f6
-	github.com/getlantern/ops v0.0.0-20220418195917-45286e0140f6
+	github.com/getlantern/trace v0.0.0-20220419114741-2e8d7c390a28
 	github.com/getlantern/uuid v1.2.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/hashicorp/golang-lru v0.5.4
@@ -20,6 +20,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.6.3
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.6.3
 	go.opentelemetry.io/otel/sdk v1.6.3
+	go.opentelemetry.io/otel/trace v1.6.3
 	google.golang.org/grpc v1.45.0
 	google.golang.org/protobuf v1.28.0
 	nhooyr.io/websocket v1.8.6
@@ -33,6 +34,7 @@ require (
 	github.com/getlantern/context v0.0.0-20220418194847-3d5e7a086201 // indirect
 	github.com/getlantern/hex v0.0.0-20190417191902-c6586a6fe0b7 // indirect
 	github.com/getlantern/hidden v0.0.0-20201229170000-e66e7f878730 // indirect
+	github.com/getlantern/ops v0.0.0-20220418195917-45286e0140f6 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
@@ -69,7 +71,6 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v0.29.0 // indirect
 	go.opentelemetry.io/otel/metric v0.29.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v0.29.0 // indirect
-	go.opentelemetry.io/otel/trace v1.6.3 // indirect
 	go.opentelemetry.io/proto/otlp v0.15.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect

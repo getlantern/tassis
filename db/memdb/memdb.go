@@ -6,14 +6,13 @@ import (
 	"sync"
 
 	"github.com/getlantern/libmessaging-go/identity"
-	"github.com/getlantern/ops"
 	"github.com/getlantern/tassis/db"
 	"github.com/getlantern/tassis/model"
-	"go.opentelemetry.io/otel"
+	"github.com/getlantern/trace"
 )
 
 var (
-	tracer = otel.Tracer("memdb")
+	tracer = trace.NewTracer("memdb")
 )
 
 func New() db.DB {
@@ -36,8 +35,8 @@ type memdb struct {
 }
 
 func (d *memdb) Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
-	op := ops.Begin("memdb.register")
-	defer op.End()
+	_, span := tracer.Continue("register")
+	defer span.End()
 
 	identityKeyString := identityKey.String()
 
@@ -60,8 +59,8 @@ func (d *memdb) Register(identityKey identity.PublicKey, deviceId []byte, regist
 }
 
 func (d *memdb) Unregister(identityKey identity.PublicKey, deviceId []byte) error {
-	op := ops.Begin("memdb.unregister")
-	defer op.End()
+	_, span := tracer.Continue("unregister")
+	defer span.End()
 
 	identityKeyString := identityKey.String()
 
@@ -80,8 +79,8 @@ func (d *memdb) Unregister(identityKey identity.PublicKey, deviceId []byte) erro
 }
 
 func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, error) {
-	op := ops.Begin("memdb.request_pre_keys")
-	defer op.End()
+	_, span := tracer.Continue("request_pre_keys")
+	defer span.End()
 
 	identityKeyString := identity.PublicKey(request.IdentityKey).String()
 
@@ -122,8 +121,8 @@ func (d *memdb) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, 
 }
 
 func (d *memdb) PreKeysRemaining(identityKey identity.PublicKey, deviceId []byte) (int, error) {
-	op := ops.Begin("memdb.pre_keys_remaining")
-	defer op.End()
+	_, span := tracer.Continue("pre_keys_remaining")
+	defer span.End()
 
 	identityKeyString := identityKey.String()
 
@@ -144,8 +143,8 @@ func (d *memdb) PreKeysRemaining(identityKey identity.PublicKey, deviceId []byte
 }
 
 func (d *memdb) AllRegisteredDevices() ([]*model.Address, error) {
-	op := ops.Begin("memdb.all_registered_devices")
-	defer op.End()
+	_, span := tracer.Continue("all_registered_devices")
+	defer span.End()
 
 	result := make([]*model.Address, 0)
 	d.mx.Lock()
@@ -168,8 +167,8 @@ func (d *memdb) AllRegisteredDevices() ([]*model.Address, error) {
 }
 
 func (d *memdb) RegisterChatNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error) {
-	op := ops.Begin("memdb.register_chat_number")
-	defer op.End()
+	_, span := tracer.Continue("register_chat_number")
+	defer span.End()
 
 	identityKeyString := identityKey.String()
 
@@ -197,8 +196,8 @@ func (d *memdb) RegisterChatNumber(identityKey identity.PublicKey, newNumber str
 }
 
 func (d *memdb) FindChatNumberByShortNumber(shortNumber string) (string, error) {
-	op := ops.Begin("memdb.find_chat_number_by_short_number")
-	defer op.End()
+	_, span := tracer.Continue("find_chat_number_by_short_number")
+	defer span.End()
 
 	d.mx.Lock()
 	defer d.mx.Unlock()
@@ -210,8 +209,8 @@ func (d *memdb) FindChatNumberByShortNumber(shortNumber string) (string, error) 
 }
 
 func (d *memdb) FindChatNumberByIdentityKey(identityKey identity.PublicKey) (string, string, error) {
-	op := ops.Begin("memdb.find_chat_number_by_identity_key")
-	defer op.End()
+	_, span := tracer.Continue("find_chat_number_by_identity_key")
+	defer span.End()
 
 	identityKeyString := identityKey.String()
 	d.mx.Lock()

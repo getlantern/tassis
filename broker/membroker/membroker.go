@@ -5,8 +5,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/getlantern/ops"
 	"github.com/getlantern/tassis/broker"
+	"github.com/getlantern/trace"
+)
+
+var (
+	tracer = trace.NewTracer("membroker")
 )
 
 func New() broker.Broker {
@@ -23,8 +27,8 @@ type topic struct {
 }
 
 func (t *topic) Publish(msg []byte) error {
-	op := ops.Begin("membroker.publish")
-	defer op.End()
+	_, span := tracer.Continue("publish")
+	defer span.End()
 
 	t.mx.Lock()
 	defer t.mx.Unlock()

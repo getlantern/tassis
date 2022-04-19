@@ -15,7 +15,6 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/getlantern/golog"
-	"github.com/getlantern/ops"
 )
 
 var (
@@ -34,7 +33,6 @@ func Start() func() {
 			launcher.WithMetricReportingPeriod(100*time.Millisecond),
 			launcher.WithAccessToken(lighstepKey),
 		)
-		ops.EnableOpenTelemetry("tassis")
 		return func() { ls.Shutdown() }
 	} else if honeycombKey != "" {
 		// Create gRPC client to talk to Honeycomb's OTEL collector
@@ -69,7 +67,6 @@ func Start() func() {
 		otel.SetTracerProvider(tp)
 
 		// Return stop function that shuts down the above TracerProvider
-		ops.EnableOpenTelemetry("tassis")
 		return func() { tp.Shutdown(context.Background()) }
 	} else {
 		log.Debug("No LIGHTSTEP_KEY or HONEYCOMB_KEY in environment, will not report traces and metrics")

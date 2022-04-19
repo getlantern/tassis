@@ -90,6 +90,8 @@ github.com/getlantern/libmessaging-go v0.0.0-20211102124917-057375a3d4f6/go.mod 
 github.com/getlantern/ops v0.0.0-20190325191751-d70cb0d6f85f/go.mod h1:D5ao98qkA6pxftxoqzibIBBrLSUli+kYnJqrgBf9cIA=
 github.com/getlantern/ops v0.0.0-20220418195917-45286e0140f6 h1:8DN68g9BZ8TS0TUQCvQB8R1lhAc60weDFPU++37RcvM=
 github.com/getlantern/ops v0.0.0-20220418195917-45286e0140f6/go.mod h1:D5ao98qkA6pxftxoqzibIBBrLSUli+kYnJqrgBf9cIA=
+github.com/getlantern/trace v0.0.0-20220419114741-2e8d7c390a28 h1:3KlawG3KsFMtqIfmNx06t8pcxeP+QZfev8Sxku/stcQ=
+github.com/getlantern/trace v0.0.0-20220419114741-2e8d7c390a28/go.mod h1:2UFHjlAj3GlPb4E4OwH1xzinQP972fPkds29CCQV/PU=
 github.com/getlantern/uuid v1.2.0 h1:pGrGaCV7XEaG6lvjWkwf8Y92BjB/9yFmkKsNFpRQ7rc=
 github.com/getlantern/uuid v1.2.0/go.mod h1:uX10hOzZUUDR+oYNSIks+RcozOEiwTNC/K2rw9SUi1k=
 github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=

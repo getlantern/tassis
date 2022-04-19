@@ -20,7 +20,7 @@ import (
 
 	"github.com/getlantern/errors"
 	"github.com/getlantern/golog"
-	"github.com/getlantern/ops"
+	"github.com/getlantern/trace"
 
 	"github.com/getlantern/libmessaging-go/encoding"
 	"github.com/getlantern/libmessaging-go/identity"
@@ -29,7 +29,8 @@ import (
 )
 
 var (
-	log = golog.LoggerFor("redisdb")
+	log    = golog.LoggerFor("redisdb")
+	tracer = trace.NewTracer("redisdb")
 )
 
 const (
@@ -98,8 +99,8 @@ type redisDB struct {
 }
 
 func (d *redisDB) Register(identityKey identity.PublicKey, deviceId []byte, registration *model.Register) error {
-	op := ops.Begin("redisdb.register")
-	defer op.End()
+	_, span := tracer.Continue("register")
+	defer span.End()
 
 	deviceKey := deviceKey(identityKey, deviceId)
 	idDevicesKey := identityDevicesKey(identityKey)
@@ -126,8 +127,8 @@ func (d *redisDB) Register(identityKey identity.PublicKey, deviceId []byte, regi
 }
 
 func (d *redisDB) Unregister(identityKey identity.PublicKey, deviceId []byte) error {
-	op := ops.Begin("redisdb.unregister")
-	defer op.End()
+	_, span := tracer.Continue("unregister")
+	defer span.End()
 
 	deviceKey := deviceKey(identityKey, deviceId)
 	idDevicesKey := identityDevicesKey(identityKey)
@@ -143,8 +144,8 @@ func (d *redisDB) Unregister(identityKey identity.PublicKey, deviceId []byte) er
 }
 
 func (d *redisDB) RequestPreKeys(request *model.RequestPreKeys) ([]*model.PreKey, error) {
-	op := ops.Begin("redisdb.request_pre_keys")
-	defer op.End()
+	_, span := tracer.Continue("request_pre_keys")
+	defer span.End()
 
 	idDevicesKey := identityDevicesKey(request.IdentityKey)
 
@@ -207,8 +208,8 @@ deviceLoop:
 }
 
 func (d *redisDB) PreKeysRemaining(identityKey identity.PublicKey, deviceId []byte) (int, error) {
-	op := ops.Begin("redisdb.pre_keys_remaining")
-	defer op.End()
+	_, span := tracer.Continue("pre_keys_remaining")
+	defer span.End()
 
 	deviceKey := deviceKey(identityKey, deviceId)
 	oneTimePreKeysKey := oneTimePreKeysKey(deviceKey)
@@ -233,8 +234,8 @@ func (d *redisDB) PreKeysRemaining(identityKey identity.PublicKey, deviceId []by
 }
 
 func (d *redisDB) AllRegisteredDevices() ([]*model.Address, error) {
-	op := ops.Begin("redisdb.all_registered_devices")
-	defer op.End()
+	_, span := tracer.Continue("all_registered_devices")
+	defer span.End()
 
 	ctx, cancel := defaultContext()
 	defer cancel()
@@ -260,8 +261,8 @@ func (d *redisDB) AllRegisteredDevices() ([]*model.Address, error) {
 }
 
 func (d *redisDB) RegisterChatNumber(identityKey identity.PublicKey, newNumber string, newShortNumber string) (string, string, error) {
-	op := ops.Begin("redisdb.register_chat_number")
-	defer op.End()
+	_, span := tracer.Continue("register_chat_number")
+	defer span.End()
 
 	identityKeyString := identityKey.String()
 
@@ -318,8 +319,8 @@ func (d *redisDB) RegisterChatNumber(identityKey identity.PublicKey, newNumber s
 }
 
 func (d *redisDB) FindChatNumberByShortNumber(shortNumber string) (string, error) {
-	op := ops.Begin("redisdb.find_chat_number_by_short_number")
-	defer op.End()
+	_, span := tracer.Continue("find_chat_number_by_short_number")
+	defer span.End()
 
 	ctx, cancel := defaultContext()
 	defer cancel()
@@ -336,8 +337,8 @@ func (d *redisDB) FindChatNumberByShortNumber(shortNumber string) (string, error
 }
 
 func (d *redisDB) FindChatNumberByIdentityKey(identityKey identity.PublicKey) (string, string, error) {
-	op := ops.Begin("redisdb.find_chat_number_by_identity_key")
-	defer op.End()
+	_, span := tracer.Continue("find_chat_number_by_identity_key")
+	defer span.End()
 
 	identityKeyString := identityKey.String()
 
