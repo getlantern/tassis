@@ -127,7 +127,6 @@ func initHoneycombMetrics(honeycombKey string) func() {
 			aggregation.CumulativeTemporalitySelector(),
 			processor.WithMemory(true),
 		),
-		controller.WithCollectPeriod(10*time.Millisecond),
 		controller.WithExporter(exporter),
 		controller.WithResource(resource),
 	)
