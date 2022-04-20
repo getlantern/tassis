@@ -1,6 +1,7 @@
 package serviceimpl
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	gerrors "errors"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
+	"go.opentelemetry.io/otel/metric/global"
+	"go.opentelemetry.io/otel/metric/instrument/syncfloat64"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
@@ -31,9 +34,18 @@ import (
 )
 
 var (
-	log    = golog.LoggerFor("service")
-	tracer = trace.NewTracer("service")
+	log          = golog.LoggerFor("service")
+	tracer       = trace.NewTracer("service")
+	messagesSent syncfloat64.Counter
 )
+
+func init() {
+	var err error
+	messagesSent, err = global.Meter("github.com/getlantern/tassis").SyncFloat64().Counter("messages_sent")
+	if err != nil {
+		log.Errorf("Unable to initialize messagesSent counter, will not track number of messages sent: %v", err)
+	}
+}
 
 type Opts struct {
 	// The address at which this service publicly reachable. Used by other tasses to forward messages to us for consumption by our clients. Required.
@@ -697,6 +709,9 @@ func (conn *clientConnection) sendOutboundMessage(msg *model.Message) {
 		return
 	}
 	conn.ack(msg)
+	if messagesSent != nil {
+		messagesSent.Add(context.Background(), 1)
+	}
 }
 
 func (srvc *Service) publisherFor(topic string) (broker.Publisher, error) {
