@@ -13,6 +13,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/metric/global"
+	"go.opentelemetry.io/otel/metric/instrument"
+	"go.opentelemetry.io/otel/metric/instrument/syncfloat64"
 	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
 	"go.opentelemetry.io/otel/sdk/metric/export/aggregation"
 	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
@@ -20,13 +22,14 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
-	"google.golang.org/grpc/credentials"
 
 	"github.com/getlantern/golog"
 )
 
 var (
 	log = golog.LoggerFor("telemetry")
+
+	MessagesSent syncfloat64.Counter
 )
 
 // Start configures opentelemetry for collecting metrics and traces, and returns
@@ -40,12 +43,14 @@ func Start() func() {
 			launcher.WithServiceName("tassis"),
 			launcher.WithAccessToken(lighstepKey),
 		)
+
+		initMetrics()
 		return func() { ls.Shutdown() }
 	} else if honeycombKey != "" {
 		shutdownTracing := initHoneycombTracing(honeycombKey)
 		shutdownMetrics := initHoneycombMetrics(honeycombKey)
 
-		// Return stop function that shuts down the above TracerProvider
+		initMetrics()
 		return func() {
 			shutdownTracing()
 			shutdownMetrics()
@@ -60,11 +65,11 @@ func initHoneycombTracing(honeycombKey string) func() {
 	log.Debug("Will report traces to Honeycomb")
 	// Create gRPC client to talk to Honeycomb's OTEL collector
 	opts := []otlptracegrpc.Option{
-		otlptracegrpc.WithEndpoint("api.honeycomb.io:443"),
+		otlptracegrpc.WithInsecure(),
+		otlptracegrpc.WithEndpoint("127.0.0.1:4317"),
 		otlptracegrpc.WithHeaders(map[string]string{
 			"x-honeycomb-team": honeycombKey,
 		}),
-		otlptracegrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, "")),
 	}
 	client := otlptracegrpc.NewClient(opts...)
 
@@ -100,12 +105,12 @@ func initHoneycombMetrics(honeycombKey string) func() {
 
 	// Create gRPC client to talk to Honeycomb's OTEL collector
 	opts := []otlpmetricgrpc.Option{
-		otlpmetricgrpc.WithEndpoint("api.honeycomb.io:443"),
+		otlpmetricgrpc.WithInsecure(),
+		otlpmetricgrpc.WithEndpoint("127.0.0.1:4317"),
 		otlpmetricgrpc.WithHeaders(map[string]string{
 			"x-honeycomb-team":    honeycombKey,
 			"x-honeycomb-dataset": "tassis",
 		}),
-		otlpmetricgrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, "")),
 	}
 	client := otlpmetricgrpc.NewClient(opts...)
 
@@ -136,12 +141,12 @@ func initHoneycombMetrics(honeycombKey string) func() {
 		return func() {}
 	}
 	if startErr := runtimeMetrics.Start(runtimeMetrics.WithMeterProvider(c)); startErr != nil {
-		log.Errorf("failed to start runtime metrics: %v", startErr)
+		log.Errorf("Failed to start runtime metrics: %v", startErr)
 		return func() {}
 	}
 
 	if startErr := hostMetrics.Start(hostMetrics.WithMeterProvider(c)); startErr != nil {
-		log.Errorf("failed to start host metrics: %v", startErr)
+		log.Errorf("Failed to start host metrics: %v", startErr)
 		return func() {}
 	}
 
@@ -149,5 +154,17 @@ func initHoneycombMetrics(honeycombKey string) func() {
 	return func() {
 		c.Stop(context.Background())
 		exporter.Shutdown(context.Background())
+	}
+}
+
+func initMetrics() {
+	meter := global.Meter("github.com/getlantern/tassis")
+	var err error
+	MessagesSent, err = meter.SyncFloat64().Counter(
+		"messages_sent",
+		instrument.WithDescription("The number of messages sent by tassis clients"),
+	)
+	if err != nil {
+		log.Errorf("Unable to initialize messagesSent counter, will not track number of messages sent: %v", err)
 	}
 }
