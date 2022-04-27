@@ -34,9 +34,23 @@ var (
 
 // Start configures opentelemetry for collecting metrics and traces, and returns
 // a function to shut down telemetry collection.
+
+func StartTeleport() func() {
+	// Teleport tracing and metrics (endpoints specified in the Teleport collector config)
+	shutdownTeleportTracing := initTeleportTracing()
+	shutdownTeleportMetrics := initTeleportMetrics()
+
+	initMetrics()
+	return func() {
+		shutdownTeleportTracing()
+		shutdownTeleportMetrics()
+	}
+}
+
 func Start() func() {
 	lighstepKey := os.Getenv("LIGHTSTEP_KEY")
 	honeycombKey := os.Getenv("HONEYCOMB_KEY")
+	
 	if lighstepKey != "" {
 		log.Debug("Will report traces and metrics to Lighstep")
 		ls := launcher.ConfigureOpentelemetry(
@@ -65,8 +79,7 @@ func initHoneycombTracing(honeycombKey string) func() {
 	log.Debug("Will report traces to Honeycomb")
 	// Create gRPC client to talk to Honeycomb's OTEL collector
 	opts := []otlptracegrpc.Option{
-		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithEndpoint("127.0.0.1:4317"),
+		otlptracegrpc.WithEndpoint("api.honeycomb.io:443"),
 		otlptracegrpc.WithHeaders(map[string]string{
 			"x-honeycomb-team": honeycombKey,
 		}),
@@ -84,18 +97,18 @@ func initHoneycombTracing(honeycombKey string) func() {
 	resource :=
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("tassis"),
+			semconv.ServiceNameKey.String("tassis-honeycomb"),
 		)
-	tp := sdktrace.NewTracerProvider(
+	tracerProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(resource),
 	)
 
 	// Configure OTEL tracing to use the above TracerProvider
-	otel.SetTracerProvider(tp)
+	otel.SetTracerProvider(tracerProvider)
 
 	return func() {
-		tp.Shutdown(context.Background())
+		tracerProvider.Shutdown(context.Background())
 		exporter.Shutdown(context.Background())
 	}
 }
@@ -105,11 +118,10 @@ func initHoneycombMetrics(honeycombKey string) func() {
 
 	// Create gRPC client to talk to Honeycomb's OTEL collector
 	opts := []otlpmetricgrpc.Option{
-		otlpmetricgrpc.WithInsecure(),
-		otlpmetricgrpc.WithEndpoint("127.0.0.1:4317"),
+		otlpmetricgrpc.WithEndpoint("api.honeycomb.io:443"),
 		otlpmetricgrpc.WithHeaders(map[string]string{
 			"x-honeycomb-team":    honeycombKey,
-			"x-honeycomb-dataset": "tassis",
+			"x-honeycomb-dataset": "tassis-honeycomb",
 		}),
 	}
 	client := otlpmetricgrpc.NewClient(opts...)
@@ -124,7 +136,7 @@ func initHoneycombMetrics(honeycombKey string) func() {
 	resource :=
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("tassis"),
+			semconv.ServiceNameKey.String("tassis-honeycomb"),
 		)
 
 	c := controller.New(
@@ -141,12 +153,101 @@ func initHoneycombMetrics(honeycombKey string) func() {
 		return func() {}
 	}
 	if startErr := runtimeMetrics.Start(runtimeMetrics.WithMeterProvider(c)); startErr != nil {
-		log.Errorf("Failed to start runtime metrics: %v", startErr)
+		log.Errorf("Honeycomb: Failed to start runtime metrics: %v", startErr)
 		return func() {}
 	}
 
 	if startErr := hostMetrics.Start(hostMetrics.WithMeterProvider(c)); startErr != nil {
-		log.Errorf("Failed to start host metrics: %v", startErr)
+		log.Errorf("Honeycomb: Failed to start host metrics: %v", startErr)
+		return func() {}
+	}
+
+	global.SetMeterProvider(c)
+	return func() {
+		c.Stop(context.Background())
+		exporter.Shutdown(context.Background())
+	}
+}
+
+func initTeleportTracing() func() {
+	log.Debug("Will report traces to Teleport")
+	// Create gRPC client to talk to Honeycomb's OTEL collector
+	opts := []otlptracegrpc.Option{
+		otlptracegrpc.WithInsecure(),
+		otlptracegrpc.WithEndpoint("127.0.0.1:4317"),
+	}
+	client := otlptracegrpc.NewClient(opts...)
+
+	// Create an exporter that exports to the Honeycomb OTEL collector
+	exporter, err := otlptrace.New(context.Background(), client)
+	if err != nil {
+		log.Errorf("Unable to initialize Teleport tracing, will not report traces to Teleport")
+		return func() {}
+	}
+
+	// Create a TracerProvider that uses the above exporter
+	resource :=
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String("tassis-teleport"),
+		)
+	tracerProvider := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(resource),
+	)
+
+	// Configure OTEL tracing to use the above TracerProvider
+	otel.SetTracerProvider(tracerProvider)
+
+	return func() {
+		tracerProvider.Shutdown(context.Background())
+		exporter.Shutdown(context.Background())
+	}
+}
+
+func initTeleportMetrics() func() {
+	log.Debug("Will report metrics to Teleport")
+
+	// Create gRPC client to talk to Honeycomb's OTEL collector
+	opts := []otlpmetricgrpc.Option{
+		otlpmetricgrpc.WithInsecure(),
+		otlpmetricgrpc.WithEndpoint("127.0.0.1:4317"),
+	}
+	client := otlpmetricgrpc.NewClient(opts...)
+
+	// Create an exporter that exports to the Honeycomb OTEL collector
+	exporter, err := otlpmetric.New(context.Background(), client)
+	if err != nil {
+		log.Errorf("(Teleport: Unable to initialize metrics, will not report metrics")
+		return func() {}
+	}
+
+	resource :=
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String("tassis-teleport"),
+		)
+
+	c := controller.New(
+		processor.NewFactory(
+			selector.NewWithInexpensiveDistribution(),
+			aggregation.CumulativeTemporalitySelector(),
+			processor.WithMemory(true),
+		),
+		controller.WithExporter(exporter),
+		controller.WithResource(resource),
+	)
+	if startErr := c.Start(context.Background()); startErr != nil {
+		log.Errorf("Teleport: Unable to start metrics controller, will not report metrics to Teleport: %v", startErr)
+		return func() {}
+	}
+	if startErr := runtimeMetrics.Start(runtimeMetrics.WithMeterProvider(c)); startErr != nil {
+		log.Errorf("Teleport: Failed to start runtime metrics: %v", startErr)
+		return func() {}
+	}
+
+	if startErr := hostMetrics.Start(hostMetrics.WithMeterProvider(c)); startErr != nil {
+		log.Errorf("Teleport: Failed to start host metrics: %v", startErr)
 		return func() {}
 	}
 
