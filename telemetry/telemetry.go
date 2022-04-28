@@ -34,9 +34,12 @@ var (
 
 // Start configures opentelemetry for collecting metrics and traces, and returns
 // a function to shut down telemetry collection.
+// StartTeleport() does this for Teleport, an OTEL gateway collector.
+// Start() does this for direct export to Lightstep and Honeycomb (if key(s) provided).
 
 func StartTeleport() func() {
-	// Teleport tracing and metrics (endpoints specified in the Teleport collector config)
+	// Teleport tracing and metrics, with downstream endpoints specified in the Teleport collector config)
+	// !! current export to Teleport collector is insecure;
 	shutdownTeleportTracing := initTeleportTracing()
 	shutdownTeleportMetrics := initTeleportMetrics()
 
@@ -97,7 +100,7 @@ func initHoneycombTracing(honeycombKey string) func() {
 	resource :=
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("tassis-honeycomb"),
+			semconv.ServiceNameKey.String("tassis"),
 		)
 	tracerProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
@@ -121,7 +124,7 @@ func initHoneycombMetrics(honeycombKey string) func() {
 		otlpmetricgrpc.WithEndpoint("api.honeycomb.io:443"),
 		otlpmetricgrpc.WithHeaders(map[string]string{
 			"x-honeycomb-team":    honeycombKey,
-			"x-honeycomb-dataset": "tassis-honeycomb",
+			"x-honeycomb-dataset": "tassis-honeycomb-metrics",
 		}),
 	}
 	client := otlpmetricgrpc.NewClient(opts...)
@@ -136,7 +139,7 @@ func initHoneycombMetrics(honeycombKey string) func() {
 	resource :=
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("tassis-honeycomb"),
+			semconv.ServiceNameKey.String("tassis"),
 		)
 
 	c := controller.New(
