@@ -53,7 +53,7 @@ func StartTeleport() func() {
 func Start() func() {
 	lighstepKey := os.Getenv("LIGHTSTEP_KEY")
 	honeycombKey := os.Getenv("HONEYCOMB_KEY")
-	
+
 	if lighstepKey != "" {
 		log.Debug("Will report traces and metrics to Lighstep")
 		ls := launcher.ConfigureOpentelemetry(
@@ -100,7 +100,7 @@ func initHoneycombTracing(honeycombKey string) func() {
 	resource :=
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("tassis"),
+			semconv.ServiceNameKey.String("tassis-honeycomb"),
 		)
 	tracerProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
@@ -139,7 +139,7 @@ func initHoneycombMetrics(honeycombKey string) func() {
 	resource :=
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("tassis"),
+			semconv.ServiceNameKey.String("tassis-honeycomb"),
 		)
 
 	c := controller.New(
