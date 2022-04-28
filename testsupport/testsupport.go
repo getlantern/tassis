@@ -46,10 +46,7 @@ var (
 // that involve multiple recipient clients of the same messages. This is primarily used to avoid testing those scenarios on the
 // membroker, which can't support them.
 func TestService(t *testing.T, testMultiClientMessaging bool, testRateLimiting bool, presenceRepo presence.Repository, buildServiceAndDB func(t *testing.T, serverID int) (service.Service, db.DB)) {
-	stopTeleportTelemetry := telemetry.StartTeleport()
-	defer stopTeleportTelemetry()
-	
-	stopTelemetry := telemetry.Start()
+	stopTelemetry := telemetry.StartTeleport()
 	defer stopTelemetry()
 
 	servicesByID := make(map[int]service.Service, 0)
