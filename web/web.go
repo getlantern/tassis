@@ -115,7 +115,7 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 				if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
 					log.Debug("websocket closed normally")
 				} else {
-					log.Errorf("unexpected error reading: %v", err)
+					log.Debugf("unexpected error reading: %v", err)
 				}
 				return
 			}
