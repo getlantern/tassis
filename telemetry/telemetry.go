@@ -65,8 +65,7 @@ func initHoneycombTracing(honeycombKey string) func() {
 	log.Debug("Will report traces to Honeycomb")
 	// Create gRPC client to talk to Honeycomb's OTEL collector
 	opts := []otlptracegrpc.Option{
-		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithEndpoint("127.0.0.1:4317"),
+		otlptracegrpc.WithEndpoint("api.honeycomb.io:443"),
 		otlptracegrpc.WithHeaders(map[string]string{
 			"x-honeycomb-team": honeycombKey,
 		}),
@@ -105,8 +104,7 @@ func initHoneycombMetrics(honeycombKey string) func() {
 
 	// Create gRPC client to talk to Honeycomb's OTEL collector
 	opts := []otlpmetricgrpc.Option{
-		otlpmetricgrpc.WithInsecure(),
-		otlpmetricgrpc.WithEndpoint("127.0.0.1:4317"),
+		otlpmetricgrpc.WithEndpoint("api.honeycomb.io:443"),
 		otlpmetricgrpc.WithHeaders(map[string]string{
 			"x-honeycomb-team":    honeycombKey,
 			"x-honeycomb-dataset": "tassis",
