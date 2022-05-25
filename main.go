@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	_ "github.com/heroku/x/hmetrics/onload"
 
 	"github.com/getlantern/golog"
 	"github.com/getlantern/memhelper"

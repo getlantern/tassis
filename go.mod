@@ -49,6 +49,7 @@ require (
 	github.com/google/uuid v1.1.2 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.10.0 // indirect
+	github.com/heroku/x v0.0.50 // indirect
 	github.com/json-iterator/go v1.1.10 // indirect
 	github.com/klauspost/compress v1.10.3 // indirect
 	github.com/klauspost/cpuid v1.3.1 // indirect
