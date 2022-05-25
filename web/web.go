@@ -37,9 +37,16 @@ type handler struct {
 }
 
 func NewHandler(srvc *serviceimpl.Service) Handler {
-	return &handler{
+	h := &handler{
 		srvc: srvc,
 	}
+	go func() {
+		for {
+			time.Sleep(10 * time.Second)
+			log.Debugf("Active connections: %d", h.ActiveConnections())
+		}
+	}()
+	return h
 }
 
 func (h *handler) ActiveConnections() int {
