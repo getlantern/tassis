@@ -16,6 +16,7 @@ import (
 	"github.com/go-redis/redis/v8"
 
 	"github.com/getlantern/golog"
+	"github.com/getlantern/memhelper"
 
 	"github.com/getlantern/tassis/attachments/s3attachments"
 	"github.com/getlantern/tassis/broker/redisbroker"
@@ -65,6 +66,8 @@ func parseRedisURL(redisURL string) (useHTTPS bool, password string, redisAddr s
 func main() {
 	stopTelemetry := telemetry.Start()
 	defer stopTelemetry()
+
+	memhelper.Track(10*time.Second, 10*time.Second, func(err error) {})
 
 	flag.Parse()
 
