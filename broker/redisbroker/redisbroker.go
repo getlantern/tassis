@@ -75,7 +75,7 @@ func New(client *redis.Client) (broker.Broker, error) {
 
 func (b *redisBroker) trackSubscribers() {
 	for {
-		time.Sleep(1 * time.Minute)
+		time.Sleep(10 * time.Second)
 		n := atomic.LoadInt64(&b.subscriberCount)
 		log.Debugf("Current subscribers: %d", n)
 	}
