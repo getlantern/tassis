@@ -602,7 +602,9 @@ func (conn *clientConnection) handleRequestUploadAuthorizations(msg *model.Messa
 		}
 	}
 	if len(uploadAuthorizations.Authorizations) == 0 {
-		conn.error(span, msg, finalErr)
+		if finalErr != nil {
+			conn.error(span, msg, finalErr)
+		}
 		return
 	}
 
