@@ -78,8 +78,13 @@ func (sub *subscriber) process(startingOffset string) {
 }
 
 func (sub *subscriber) send(msgs []*message) {
-	sub.messagesIn <- msgs
-	<-sub.processedLastBatch
+	select {
+	case <-sub.closeCh:
+		// closed
+		return
+	case sub.messagesIn <- msgs:
+		<-sub.processedLastBatch
+	}
 }
 
 func (sub *subscriber) Messages() <-chan broker.Message {
