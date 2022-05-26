@@ -6,7 +6,6 @@ import (
 	"crypto/subtle"
 	gerrors "errors"
 	"fmt"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -277,8 +276,6 @@ func (conn *clientConnection) Drain() int {
 
 func (conn *clientConnection) Close() {
 	conn.closeOnce.Do(func() {
-		log.Debug("Closing connection")
-		debug.PrintStack()
 		close(conn.closeCh)
 	})
 }
@@ -306,11 +303,7 @@ func (conn *clientConnection) startHandlingInbound() error {
 	}
 
 	go func() {
-		defer func() {
-			log.Debug("Closing subscriber")
-			subscriber.Close()
-			log.Debug("Closed subscriber")
-		}()
+		defer subscriber.Close()
 
 		ch := subscriber.Messages()
 		for {

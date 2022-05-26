@@ -66,11 +66,7 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		resp.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	defer func() {
-		log.Debug("Closing service client")
-		client.Close()
-		log.Debug("Closed service client")
-	}()
+	defer client.Close()
 
 	conn, err := websocket.Accept(resp, req, nil)
 	if err != nil {
