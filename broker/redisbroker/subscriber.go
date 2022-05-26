@@ -4,6 +4,7 @@ import (
 	"context"
 	gerrors "errors"
 	"sync"
+	"sync/atomic"
 
 	"github.com/go-redis/redis/v8"
 
@@ -43,11 +44,13 @@ func (b *redisBroker) newSubscriber(stream string, startingOffset string) *subsc
 		processedLastBatch: make(chan interface{}),
 		closeCh:            make(chan interface{}),
 	}
+	atomic.AddInt64(&b.subscriberCount, 1)
 	go sub.process(startingOffset)
 	return sub
 }
 
 func (sub *subscriber) process(startingOffset string) {
+	defer atomic.AddInt64(&sub.b.subscriberCount, -1)
 	defer close(sub.messagesOut)
 
 	offset := startingOffset

@@ -22,6 +22,8 @@ import (
 	_ "embed"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 
@@ -49,6 +51,7 @@ type redisBroker struct {
 	subscriberRequests chan *subscriberRequest
 	acks               chan *ack
 	ackScriptSHA       string
+	subscriberCount    int64
 }
 
 // New constructs a new Redis-backed Broker that connects with the given client.
@@ -64,9 +67,18 @@ func New(client *redis.Client) (broker.Broker, error) {
 		acks:               make(chan *ack, 10000),               // TODO: make this tunable
 		ackScriptSHA:       ackScriptSHA,
 	}
+	go b.trackSubscribers()
 	go b.processSubscribers()
 	go b.processAcks()
 	return b, nil
+}
+
+func (b *redisBroker) trackSubscribers() {
+	for {
+		time.Sleep(10 * time.Second)
+		n := atomic.LoadInt64(&b.subscriberCount)
+		log.Debugf("Current subscribers: %d", n)
+	}
 }
 
 func (b *redisBroker) NewPublisher(topicName string) (broker.Publisher, error) {
