@@ -57,8 +57,8 @@ func (sub *subscriber) process(startingOffset string) {
 	for {
 		sub.b.subscriberRequests <- &subscriberRequest{sub, offset}
 		select {
-		// case <-sub.closeCh:
-		// 	return
+		case <-sub.closeCh:
+			return
 		case msgs := <-sub.messagesIn:
 			for _, msg := range msgs {
 				if offsetLessThan(offset, msg.offset) {
