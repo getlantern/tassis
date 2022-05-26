@@ -303,11 +303,7 @@ func (conn *clientConnection) startHandlingInbound() error {
 	}
 
 	go func() {
-		defer func() {
-			log.Debug("Closing subscriber")
-			subscriber.Close()
-			log.Debug("Closed subscriber")
-		}()
+		defer subscriber.Close()
 
 		ch := subscriber.Messages()
 		for {

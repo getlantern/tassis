@@ -4,7 +4,6 @@ import (
 	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
-	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -346,15 +345,10 @@ func TestService(t *testing.T, testMultiClientMessaging bool, testRateLimiting b
 		})
 
 		t.Run("new recipient without prior ack should receive old message, old client should receive none", func(t *testing.T) {
-			time.Sleep(10 * time.Second)
-			fmt.Println("Logging in")
 			clientB1Extra := login(t, server1, userB, deviceB1, userBKeyPair.Private)
 			defer clientB1Extra.Close()
-			fmt.Println("About to receive")
 			msg := clientB1Extra.Receive()
-			fmt.Printf("msg: %v\n", msg)
 			inboundMsg := msg.GetInboundMessage()
-			fmt.Printf("inboundMsg: %v\n", inboundMsg)
 			require.Equal(t, "ciphertext2", string(inboundMsg.UnidentifiedSenderMessage))
 			clientB1Extra.Send(mb.NewAck(msg))
 			require.Zero(t, clientB1.Drain())

@@ -42,7 +42,7 @@ func NewHandler(srvc *serviceimpl.Service) Handler {
 	}
 	go func() {
 		for {
-			time.Sleep(10 * time.Second)
+			time.Sleep(1 * time.Minute)
 			log.Debugf("Active connections: %d", h.ActiveConnections())
 		}
 	}()
@@ -66,11 +66,7 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		resp.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	defer func() {
-		log.Debug("Closing service client")
-		client.Close()
-		log.Debug("Closed service client")
-	}()
+	defer client.Close()
 
 	conn, err := websocket.Accept(resp, req, nil)
 	if err != nil {
@@ -126,7 +122,7 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 				if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
 					log.Debug("websocket closed normally")
 				} else {
-					log.Debugf("unexpected error reading: %v", websocket.CloseStatus(err))
+					log.Debugf("unexpected error reading: %v", err)
 				}
 				return
 			}
