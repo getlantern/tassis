@@ -40,7 +40,7 @@ func (b *redisBroker) newSubscriber(stream string, startingOffset string) *subsc
 		b:                  b,
 		stream:             stream,
 		messagesOut:        make(chan broker.Message, 10), // TODO make this tunable
-		messagesIn:         make(chan []*message),
+		messagesIn:         make(chan []*message, 10),
 		processedLastBatch: make(chan interface{}),
 		closeCh:            make(chan interface{}),
 	}
@@ -56,19 +56,23 @@ func (sub *subscriber) process(startingOffset string) {
 	offset := startingOffset
 	for {
 		sub.b.subscriberRequests <- &subscriberRequest{sub, offset}
-		msgs := <-sub.messagesIn
-		for _, msg := range msgs {
-			if offsetLessThan(offset, msg.offset) {
-				sub.messagesOut <- msg
-				offset = msg.offset
-			}
-		}
-		sub.processedLastBatch <- nil
 		select {
 		case <-sub.closeCh:
 			return
-		default:
-			// continue
+		case msgs := <-sub.messagesIn:
+			for _, msg := range msgs {
+				if offsetLessThan(offset, msg.offset) {
+					sub.messagesOut <- msg
+					offset = msg.offset
+				}
+			}
+			sub.processedLastBatch <- nil
+			select {
+			case <-sub.closeCh:
+				return
+			default:
+				// continue
+			}
 		}
 	}
 }
