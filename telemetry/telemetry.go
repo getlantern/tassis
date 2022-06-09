@@ -87,6 +87,7 @@ func initHoneycombTracing(honeycombKey string) func() {
 		)
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(0.05))),
 		sdktrace.WithResource(resource),
 	)
 
