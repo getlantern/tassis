@@ -7,7 +7,6 @@ go 1.17
 require (
 	github.com/getlantern/errors v1.0.1
 	github.com/getlantern/golog v0.0.0-20201105130739-9586b8bde3a9
-	github.com/getlantern/keyman v0.0.0-20210622061955-aa0d47d4932c
 	github.com/getlantern/libmessaging-go v0.0.0-20211102124917-057375a3d4f6
 	github.com/getlantern/trace v0.0.0-20220419114741-2e8d7c390a28
 	github.com/getlantern/uuid v1.2.0
@@ -36,10 +35,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/getlantern/byteexec v0.0.0-20170405023437-4cfb26ec74f4 // indirect
 	github.com/getlantern/context v0.0.0-20220418194847-3d5e7a086201 // indirect
-	github.com/getlantern/elevate v0.0.0-20200430163644-2881a121236d // indirect
-	github.com/getlantern/filepersist v0.0.0-20160317154340-c5f0cd24e799 // indirect
 	github.com/getlantern/hex v0.0.0-20190417191902-c6586a6fe0b7 // indirect
 	github.com/getlantern/hidden v0.0.0-20201229170000-e66e7f878730 // indirect
 	github.com/getlantern/ops v0.0.0-20220418195917-45286e0140f6 // indirect
