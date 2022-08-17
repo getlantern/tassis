@@ -8,13 +8,9 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
-type subscriberRequestsByStream map[string][]*subscriberRequest
-
-func (reqs subscriberRequestsByStream) add(req *subscriberRequest) {
-	reqs[req.sub.stream] = append(reqs[req.sub.stream], req)
-}
-
 // processSubscribers reads messages from Redis streams for active subscribers. It works as follows:
+//
+// TODO: update this comment
 //
 // 1. subscriber submits request to b.subscriberRequests with the stream name and the offset from which to read
 // 2. processSubscribers coalesces multiple pending requests and determines the minimum required offset per stream
@@ -24,33 +20,18 @@ func (reqs subscriberRequestsByStream) add(req *subscriberRequest) {
 // 6. once the subscribers that did receive results have had a chance to forward them to their clients, they submit a new request to b.subscriberRequests in order to be included in an upcoming loop
 //
 func (b *redisBroker) processSubscribers() {
-	requestsByStream := make(subscriberRequestsByStream)
 	for {
-		if len(requestsByStream) == 0 {
-			// wait for a new request
-			req := <-b.subscriberRequests
-			requestsByStream.add(req)
-		}
-		b.coalesceAdditionalSubscriberRequests(requestsByStream)
-
-		b.readStreams(requestsByStream)
+		b.readStreams()
 	}
 }
 
-func (b *redisBroker) coalesceAdditionalSubscriberRequests(requestsByStream subscriberRequestsByStream) {
-	for {
-		select {
-		case req := <-b.subscriberRequests:
-			requestsByStream.add(req)
-		case <-time.After(250 * time.Millisecond): // TODO: make this tunable
-			// no more pending requests
-			return
-		}
+func (b *redisBroker) readStreams() {
+	streamsWithOffsets := b.gatherStreamsWithOffsets()
+	if len(streamsWithOffsets) == 0 {
+		// no streams, sleep and try again
+		time.Sleep(250 * time.Millisecond)
+		return
 	}
-}
-
-func (b *redisBroker) readStreams(requestsByStream subscriberRequestsByStream) {
-	streamsWithOffsets := b.gatherStreamsWithOffsets(requestsByStream)
 
 	ctx := context.Background()
 
@@ -63,39 +44,46 @@ func (b *redisBroker) readStreams(requestsByStream subscriberRequestsByStream) {
 		if !gerrors.Is(err, context.Canceled) && !gerrors.Is(err, redis.Nil) {
 			// unexpected error, log and wait a little before reconnecting
 			log.Error(err)
-			time.Sleep(2 * time.Second)
+			time.Sleep(250 * time.Millisecond)
 		}
 		return
 	}
 
+	log.Debugf("Read %d streams", len(streams))
+	b.subscribersMx.RLock()
 	for _, stream := range streams {
-		requestsForStream := requestsByStream[stream.Stream]
-		for _, req := range requestsForStream {
+		subscribersForStream := b.subscribersByStream[stream.Stream]
+		for _, sub := range subscribersForStream {
 			msgs := make([]*message, 0, len(stream.Messages))
 			for _, msg := range stream.Messages {
 				msgs = append(msgs, &message{
 					b:      b,
 					offset: msg.ID,
-					sub:    req.sub,
+					sub:    sub,
 					data:   []byte(msg.Values["data"].(string)),
 				})
 			}
-			req.sub.send(msgs)
+			sub.send(msgs)
 		}
-		// since we got something for this stream, delete its subscribers
-		delete(requestsByStream, stream.Stream)
 	}
+	b.subscribersMx.RUnlock()
 }
 
-func (b *redisBroker) gatherStreamsWithOffsets(requestsByStream subscriberRequestsByStream) []string {
-	streamsWithOffsets := make([]string, 0, len(requestsByStream)*2)
-	offsets := make([]string, 0, len(requestsByStream))
-	for stream, requestsForStream := range requestsByStream {
+func (b *redisBroker) gatherStreamsWithOffsets() []string {
+	b.subscribersMx.RLock()
+	defer b.subscribersMx.RUnlock()
+
+	streamsWithOffsets := make([]string, 0, len(b.subscribersByStream)*2)
+	offsets := make([]string, 0, len(b.subscribersByStream))
+	for stream, subscribersForStream := range b.subscribersByStream {
 		streamsWithOffsets = append(streamsWithOffsets, stream)
 		lowestOffset := emptyOffset
-		for _, req := range requestsForStream {
-			if lowestOffset == emptyOffset || offsetLessThan(req.offset, lowestOffset) {
-				lowestOffset = req.offset
+		for _, sub := range subscribersForStream {
+			sub.offsetMx.RLock()
+			offset := sub.offset
+			sub.offsetMx.RUnlock()
+			if lowestOffset == emptyOffset || offsetLessThan(offset, lowestOffset) {
+				lowestOffset = offset
 			}
 		}
 		offsets = append(offsets, lowestOffset)

@@ -22,8 +22,7 @@ import (
 	_ "embed"
 	"strconv"
 	"strings"
-	"sync/atomic"
-	"time"
+	"sync"
 
 	"github.com/go-redis/redis/v8"
 
@@ -39,7 +38,7 @@ const (
 )
 
 var (
-	log    = golog.LoggerFor("redisdb")
+	log    = golog.LoggerFor("redisbroker")
 	tracer = trace.NewTracer("redisbroker")
 )
 
@@ -47,11 +46,11 @@ var (
 var ackScript []byte
 
 type redisBroker struct {
-	client             *redis.Client
-	subscriberRequests chan *subscriberRequest
-	acks               chan *ack
-	ackScriptSHA       string
-	subscriberCount    int64
+	client              *redis.Client
+	subscribersByStream map[string]map[string]*subscriber
+	subscribersMx       sync.RWMutex
+	acks                chan *ack
+	ackScriptSHA        string
 }
 
 // New constructs a new Redis-backed Broker that connects with the given client.
@@ -62,23 +61,14 @@ func New(client *redis.Client) (broker.Broker, error) {
 	}
 
 	b := &redisBroker{
-		client:             client,
-		subscriberRequests: make(chan *subscriberRequest, 10000), // TODO: make this tunable
-		acks:               make(chan *ack, 10000),               // TODO: make this tunable
-		ackScriptSHA:       ackScriptSHA,
+		client:              client,
+		subscribersByStream: make(map[string]map[string]*subscriber),
+		acks:                make(chan *ack, 10000), // TODO: make this tunable
+		ackScriptSHA:        ackScriptSHA,
 	}
-	go b.trackSubscribers()
 	go b.processSubscribers()
 	go b.processAcks()
 	return b, nil
-}
-
-func (b *redisBroker) trackSubscribers() {
-	for {
-		time.Sleep(10 * time.Second)
-		n := atomic.LoadInt64(&b.subscriberCount)
-		log.Debugf("Current subscribers: %d", n)
-	}
 }
 
 func (b *redisBroker) NewPublisher(topicName string) (broker.Publisher, error) {

@@ -4,19 +4,22 @@ import (
 	"context"
 	gerrors "errors"
 	"sync"
-	"sync/atomic"
 
 	"github.com/go-redis/redis/v8"
 
 	"github.com/getlantern/tassis/broker"
+	"github.com/getlantern/uuid"
 )
 
 type subscriber struct {
+	id                 string
 	b                  *redisBroker
 	stream             string
+	offset             string
 	messagesOut        chan broker.Message
 	messagesIn         chan []*message
 	processedLastBatch chan interface{}
+	offsetMx           sync.RWMutex
 	closeOnce          sync.Once
 	closeCh            chan interface{}
 }
@@ -36,36 +39,55 @@ func (b *redisBroker) NewSubscriber(topicName string) (broker.Subscriber, error)
 }
 
 func (b *redisBroker) newSubscriber(stream string, startingOffset string) *subscriber {
+	id := uuid.New().String()
 	sub := &subscriber{
+		id:                 id,
 		b:                  b,
 		stream:             stream,
+		offset:             startingOffset,
 		messagesOut:        make(chan broker.Message, 10), // TODO make this tunable
 		messagesIn:         make(chan []*message),
 		processedLastBatch: make(chan interface{}),
 		closeCh:            make(chan interface{}),
 	}
-	atomic.AddInt64(&b.subscriberCount, 1)
-	go sub.process(startingOffset)
+
+	b.subscribersMx.Lock()
+	subscribersById := b.subscribersByStream[stream]
+	if subscribersById == nil {
+		subscribersById = make(map[string]*subscriber)
+		b.subscribersByStream[stream] = subscribersById
+	}
+	subscribersById[id] = sub
+	b.subscribersMx.Unlock()
+	go sub.process()
 	return sub
 }
 
-func (sub *subscriber) process(startingOffset string) {
-	defer atomic.AddInt64(&sub.b.subscriberCount, -1)
+func (sub *subscriber) process() {
+	defer func() {
+		sub.b.subscribersMx.Lock()
+		subscribersById := sub.b.subscribersByStream[sub.stream]
+		delete(subscribersById, sub.id)
+		if len(subscribersById) == 0 {
+			delete(sub.b.subscribersByStream, sub.stream)
+		}
+		sub.b.subscribersMx.Unlock()
+	}()
 	defer close(sub.messagesOut)
 
-	offset := startingOffset
 	for {
-		sub.b.subscriberRequests <- &subscriberRequest{sub, offset}
 		select {
 		case <-sub.closeCh:
 			return
 		case msgs := <-sub.messagesIn:
+			sub.offsetMx.Lock()
 			for _, msg := range msgs {
-				if offsetLessThan(offset, msg.offset) {
+				if offsetLessThan(sub.offset, msg.offset) {
 					sub.messagesOut <- msg
-					offset = msg.offset
+					sub.offset = msg.offset
 				}
 			}
+			sub.offsetMx.Unlock()
 			sub.processedLastBatch <- nil
 			select {
 			case <-sub.closeCh:
