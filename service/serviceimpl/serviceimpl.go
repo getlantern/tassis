@@ -213,7 +213,7 @@ func (srvc *Service) Connect() (service.ClientConnection, error) {
 		mb:              &model.MessageBuilder{},
 		unackedMessages: make(map[uint32]func() error),
 		out:             make(chan *model.Message),
-		in:              make(chan *model.Message),
+		in:              make(chan *model.Message, 10), // use a small buffer so that sendInitMessages doesn't hang
 		closeCh:         make(chan interface{}),
 	}
 
@@ -333,8 +333,13 @@ func (conn *clientConnection) handleInboundMessage(brokerMsg broker.Message) {
 func (conn *clientConnection) handleOutbound() {
 	defer conn.Close()
 
-	for msg := range conn.out {
-		conn.doHandleOutboundMessage(msg)
+	for {
+		select {
+		case msg := <-conn.out:
+			conn.doHandleOutboundMessage(msg)
+		case <-conn.closeCh:
+			return
+		}
 	}
 }
 

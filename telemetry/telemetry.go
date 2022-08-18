@@ -130,7 +130,7 @@ func initHoneycombMetrics(honeycombKey string) func() {
 	c := controller.New(
 		processor.NewFactory(
 			selector.NewWithInexpensiveDistribution(),
-			aggregation.DeltaTemporalitySelector(),
+			aggregation.CumulativeTemporalitySelector(),
 			processor.WithMemory(true),
 		),
 		controller.WithExporter(exporter),
