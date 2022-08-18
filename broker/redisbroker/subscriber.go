@@ -96,6 +96,7 @@ func (sub *subscriber) process() {
 					sub.messagesOut <- msg
 					if messagesReceived != nil {
 						messagesReceived.Add(context.Background(), 1)
+						log.Debug("count message received")
 					}
 					sub.offset = msg.offset
 				}

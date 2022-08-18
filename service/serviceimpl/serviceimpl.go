@@ -707,6 +707,7 @@ func (conn *clientConnection) sendOutboundMessage(msg *model.Message) {
 		log.Errorf("Unable to initialize messages_sent counter, will not track number of messages sent: %v", err)
 	} else {
 		messagesSent.Add(context.Background(), 1)
+		log.Debug("count message sent")
 	}
 }
 
