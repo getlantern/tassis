@@ -17,7 +17,6 @@ import (
 	_ "github.com/heroku/x/hmetrics/onload"
 
 	"github.com/getlantern/golog"
-	"github.com/getlantern/memhelper"
 
 	"github.com/getlantern/tassis/attachments/s3attachments"
 	"github.com/getlantern/tassis/broker/redisbroker"
@@ -67,15 +66,6 @@ func parseRedisURL(redisURL string) (useHTTPS bool, password string, redisAddr s
 func main() {
 	stopTelemetry := telemetry.Start()
 	defer stopTelemetry()
-
-	// TOOD: figure out what's causing the memory growth issues and remove this code
-	go func() {
-		// Force restart every 15 minutes
-		time.Sleep(15 * time.Minute)
-		log.Fatal("Crashing to force restart before memory runs out")
-	}()
-
-	memhelper.Track(10*time.Second, 10*time.Second, func(err error) {})
 
 	flag.Parse()
 
