@@ -704,7 +704,7 @@ func (conn *clientConnection) sendOutboundMessage(msg *model.Message) {
 	conn.ack(msg)
 	messagesSent, err := meter.SyncFloat64().Counter("messages_sent")
 	if err != nil {
-		log.Errorf("Unable to initialize messagesSent counter, will not track number of messages sent: %v", err)
+		log.Errorf("Unable to initialize messages_sent counter, will not track number of messages sent: %v", err)
 	} else {
 		messagesSent.Add(context.Background(), 1)
 	}

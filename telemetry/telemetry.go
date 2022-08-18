@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/instrument/syncfloat64"
@@ -158,12 +159,17 @@ func initHoneycombMetrics(honeycombKey string) func() {
 
 func initMetrics() {
 	meter := global.Meter("github.com/getlantern/tassis")
+	initCounter(meter, "messages_sent", "The number of messages sent by tassis clients")
+	initCounter(meter, "messages_received", "The number of messages received by tassis clients")
+}
+
+func initCounter(meter metric.Meter, name, description string) {
 	var err error
 	MessagesSent, err = meter.SyncFloat64().Counter(
-		"messages_sent",
-		instrument.WithDescription("The number of messages sent by tassis clients"),
+		name,
+		instrument.WithDescription(description),
 	)
 	if err != nil {
-		log.Errorf("Unable to initialize messagesSent counter, will not track number of messages sent: %v", err)
+		log.Errorf("Unable to initialize %v counter, will not track %v: %v", name, description, err)
 	}
 }
