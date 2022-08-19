@@ -74,7 +74,7 @@ func initHoneycombTracing(honeycombKey string) func() {
 		return func() {}
 	}
 
-	sampleRatio := 100
+	sampleRatio := 8
 	sampleRate := 1.0 / float64(sampleRatio)
 
 	// Create a TracerProvider that uses the above exporter
