@@ -83,6 +83,7 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 
 	stopCh := make(chan interface{})
 
+	// write to client
 	go func() {
 		defer wg.Done()
 
@@ -110,6 +111,7 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
+	// read from client
 	go func() {
 		defer wg.Done()
 		defer close(stopCh)
@@ -144,6 +146,25 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
+	// ping/pong keepalives
+	go func() {
+		for {
+			time.Sleep(15 * time.Second)
+			if err := ping(conn); err != nil {
+				// ping failed, connection will have been closed, stop looping
+				return
+			}
+		}
+	}()
+
 	wg.Wait()
 	conn.Close(websocket.StatusNormalClosure, "")
+}
+
+// this pings the client to make sure it's still there and to keep any intermediate routers from timing out
+func ping(conn *websocket.Conn) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	return conn.Ping(ctx)
 }
