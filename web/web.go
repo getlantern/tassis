@@ -103,7 +103,8 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 					return
 				}
 			case <-stopCh:
-				log.Debug("client reader closed")
+				// This was getting verbose
+				// log.Debug("client reader closed")
 				return
 			}
 		}
@@ -119,15 +120,17 @@ func (h *handler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 			_, b, err := conn.Read(ctx)
 			cancel()
 			if err != nil {
-				if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
-					log.Debug("websocket closed normally")
-				} else {
-					log.Debugf("unexpected error reading: %v", websocket.CloseStatus(err))
-				}
+				// This was getting verbose
+				// if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
+				// 	log.Debug("websocket closed normally")
+				// } else {
+				// 	log.Debugf("unexpected error reading: %v", websocket.CloseStatus(err))
+				// }
 				return
 			}
 			if bytes.Equal(b, forceClose) {
-				log.Debug("force closing connection at client's request")
+				// This was getting verbose
+				// log.Debug("force closing connection at client's request")
 				conn.Close(websocket.StatusNormalClosure, "forced closure")
 				return
 			}
