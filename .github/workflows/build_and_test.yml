@@ -19,7 +19,7 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v2
       with:
-        go-version: 1.17.x
+        go-version: 1.18.x
     - name: Install build tools if necessary (for running locally with act)
       run: command -v make 2>&1 || DEBIAN_FRONTEND=noninteractive sudo apt update && sudo apt install -y build-essential
     - name: Checkout code

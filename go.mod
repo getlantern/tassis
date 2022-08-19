@@ -1,8 +1,8 @@
 module github.com/getlantern/tassis
 
-go 1.19
+go 1.18
 
-// +heroku goVersion go1.17
+// +heroku goVersion go1.18
 
 require (
 	github.com/getlantern/errors v1.0.1
