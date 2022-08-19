@@ -1,7 +1,6 @@
 package serviceimpl
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	gerrors "errors"
@@ -29,7 +28,6 @@ import (
 	"github.com/getlantern/tassis/presence"
 	"github.com/getlantern/tassis/presence/mempresence"
 	"github.com/getlantern/tassis/service"
-	"github.com/getlantern/tassis/telemetry"
 )
 
 var (
@@ -706,9 +704,6 @@ func (conn *clientConnection) sendOutboundMessage(msg *model.Message) {
 		return
 	}
 	conn.ack(msg)
-	if telemetry.MessagesSent != nil {
-		telemetry.MessagesSent.Add(context.Background(), 1)
-	}
 }
 
 func (srvc *Service) publisherFor(topic string) (broker.Publisher, error) {

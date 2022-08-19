@@ -8,7 +8,6 @@ require (
 	github.com/getlantern/errors v1.0.1
 	github.com/getlantern/golog v0.0.0-20211223150227-d4d95a44d873
 	github.com/getlantern/libmessaging-go v0.0.0-20211102124917-057375a3d4f6
-	github.com/getlantern/memhelper v0.0.0-20220104170102-df557102babd
 	github.com/getlantern/trace v0.0.0-20220419114741-2e8d7c390a28
 	github.com/getlantern/uuid v1.2.0
 	github.com/go-redis/redis/v8 v8.11.5
@@ -38,7 +37,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/getlantern/context v0.0.0-20220418194847-3d5e7a086201 // indirect
 	github.com/getlantern/hex v0.0.0-20190417191902-c6586a6fe0b7 // indirect
 	github.com/getlantern/hidden v0.0.0-20201229170000-e66e7f878730 // indirect
@@ -66,7 +64,6 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20220216144756-c35f1ee13d7c // indirect
 	github.com/rs/xid v1.2.1 // indirect
 	github.com/sethvargo/go-envconfig v0.6.0 // indirect
-	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/shirou/gopsutil/v3 v3.22.4 // indirect
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
 	github.com/tklauser/numcpus v0.5.0 // indirect

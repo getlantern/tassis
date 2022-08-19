@@ -8,7 +8,6 @@ import (
 	"github.com/go-redis/redis/v8"
 
 	"github.com/getlantern/tassis/broker"
-	"github.com/getlantern/tassis/telemetry"
 	"github.com/getlantern/uuid"
 )
 
@@ -85,9 +84,6 @@ func (sub *subscriber) process() {
 			for _, msg := range msgs {
 				if offsetLessThan(sub.offset, msg.offset) {
 					sub.messagesOut <- msg
-					if telemetry.MessagesReceived != nil {
-						telemetry.MessagesReceived.Add(context.Background(), 1)
-					}
 					sub.offset = msg.offset
 				}
 			}

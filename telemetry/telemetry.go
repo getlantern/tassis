@@ -8,14 +8,12 @@ import (
 	hostMetrics "go.opentelemetry.io/contrib/instrumentation/host"
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/global"
-	"go.opentelemetry.io/otel/metric/instrument"
-	"go.opentelemetry.io/otel/metric/instrument/syncint64"
 	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
 	"go.opentelemetry.io/otel/sdk/metric/export/aggregation"
 	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
@@ -29,9 +27,6 @@ import (
 
 var (
 	log = golog.LoggerFor("telemetry")
-
-	MessagesSent     syncint64.Counter
-	MessagesReceived syncint64.Counter
 )
 
 // Start configures opentelemetry for collecting metrics and traces, and returns
@@ -46,13 +41,11 @@ func Start() func() {
 			launcher.WithAccessToken(lighstepKey),
 		)
 
-		initMetrics()
 		return func() { ls.Shutdown() }
 	} else if honeycombKey != "" {
 		shutdownTracing := initHoneycombTracing(honeycombKey)
 		shutdownMetrics := initHoneycombMetrics(honeycombKey)
 
-		initMetrics()
 		return func() {
 			shutdownTracing()
 			shutdownMetrics()
@@ -81,15 +74,19 @@ func initHoneycombTracing(honeycombKey string) func() {
 		return func() {}
 	}
 
+	sampleRatio := 100
+	sampleRate := 1.0 / float64(sampleRatio)
+
 	// Create a TracerProvider that uses the above exporter
 	resource :=
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceNameKey.String("tassis"),
+			attribute.Key("SampleRate").Int(sampleRatio),
 		)
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
-		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(0.01))),
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(sampleRate))),
 		sdktrace.WithResource(resource),
 	)
 
@@ -156,21 +153,4 @@ func initHoneycombMetrics(honeycombKey string) func() {
 		c.Stop(context.Background())
 		exporter.Shutdown(context.Background())
 	}
-}
-
-func initMetrics() {
-	meter := global.Meter("github.com/getlantern/tassis")
-	MessagesSent = initCounter(meter, "messages_sent", "The number of messages sent by tassis clients")
-	MessagesReceived = initCounter(meter, "messages_received", "The number of messages received by tassis clients")
-}
-
-func initCounter(meter metric.Meter, name, description string) syncint64.Counter {
-	counter, err := meter.SyncInt64().Counter(
-		name,
-		instrument.WithDescription(description),
-	)
-	if err != nil {
-		log.Errorf("Unable to initialize %v counter, will not track %v: %v", name, description, err)
-	}
-	return counter
 }
