@@ -6,14 +6,10 @@ import (
 	"sync"
 
 	"github.com/go-redis/redis/v8"
-	"go.opentelemetry.io/otel/metric/global"
 
 	"github.com/getlantern/tassis/broker"
+	"github.com/getlantern/tassis/telemetry"
 	"github.com/getlantern/uuid"
-)
-
-var (
-	meter = global.Meter("github.com/getlantern/tassis")
 )
 
 type subscriber struct {
@@ -80,11 +76,6 @@ func (sub *subscriber) process() {
 	}()
 	defer close(sub.messagesOut)
 
-	messagesReceived, err := meter.SyncFloat64().Counter("messages_received")
-	if err != nil {
-		log.Errorf("Unable to initialize messages_received counter, will not track number of messages received: %v", err)
-	}
-
 	for {
 		select {
 		case <-sub.closeCh:
@@ -94,8 +85,8 @@ func (sub *subscriber) process() {
 			for _, msg := range msgs {
 				if offsetLessThan(sub.offset, msg.offset) {
 					sub.messagesOut <- msg
-					if messagesReceived != nil {
-						messagesReceived.Add(context.Background(), 1)
+					if telemetry.MessagesReceived != nil {
+						telemetry.MessagesReceived.Add(context.Background(), 1)
 					}
 					sub.offset = msg.offset
 				}

@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/metric/instrument"
-	"go.opentelemetry.io/otel/metric/instrument/syncfloat64"
+	"go.opentelemetry.io/otel/metric/instrument/syncint64"
 	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
 	"go.opentelemetry.io/otel/sdk/metric/export/aggregation"
 	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
@@ -30,7 +30,8 @@ import (
 var (
 	log = golog.LoggerFor("telemetry")
 
-	MessagesSent syncfloat64.Counter
+	MessagesSent     syncint64.Counter
+	MessagesReceived syncint64.Counter
 )
 
 // Start configures opentelemetry for collecting metrics and traces, and returns
@@ -159,17 +160,17 @@ func initHoneycombMetrics(honeycombKey string) func() {
 
 func initMetrics() {
 	meter := global.Meter("github.com/getlantern/tassis")
-	initCounter(meter, "messages_sent", "The number of messages sent by tassis clients")
-	initCounter(meter, "messages_received", "The number of messages received by tassis clients")
+	MessagesSent = initCounter(meter, "messages_sent", "The number of messages sent by tassis clients")
+	MessagesReceived = initCounter(meter, "messages_received", "The number of messages received by tassis clients")
 }
 
-func initCounter(meter metric.Meter, name, description string) {
-	var err error
-	MessagesSent, err = meter.SyncFloat64().Counter(
+func initCounter(meter metric.Meter, name, description string) syncint64.Counter {
+	counter, err := meter.SyncInt64().Counter(
 		name,
 		instrument.WithDescription(description),
 	)
 	if err != nil {
 		log.Errorf("Unable to initialize %v counter, will not track %v: %v", name, description, err)
 	}
+	return counter
 }

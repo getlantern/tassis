@@ -12,7 +12,6 @@ import (
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
-	"go.opentelemetry.io/otel/metric/global"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
@@ -30,12 +29,12 @@ import (
 	"github.com/getlantern/tassis/presence"
 	"github.com/getlantern/tassis/presence/mempresence"
 	"github.com/getlantern/tassis/service"
+	"github.com/getlantern/tassis/telemetry"
 )
 
 var (
 	log    = golog.LoggerFor("service")
 	tracer = trace.NewTracer("service")
-	meter  = global.Meter("github.com/getlantern/tassis")
 )
 
 type Opts struct {
@@ -707,11 +706,8 @@ func (conn *clientConnection) sendOutboundMessage(msg *model.Message) {
 		return
 	}
 	conn.ack(msg)
-	messagesSent, err := meter.SyncFloat64().Counter("messages_sent")
-	if err != nil {
-		log.Errorf("Unable to initialize messages_sent counter, will not track number of messages sent: %v", err)
-	} else {
-		messagesSent.Add(context.Background(), 1)
+	if telemetry.MessagesSent != nil {
+		telemetry.MessagesSent.Add(context.Background(), 1)
 	}
 }
 
