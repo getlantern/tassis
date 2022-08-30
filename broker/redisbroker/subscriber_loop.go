@@ -10,15 +10,10 @@ import (
 
 // processSubscribers reads messages from Redis streams for active subscribers. It works as follows:
 //
-// TODO: update this comment
-//
-// 1. subscriber submits request to b.subscriberRequests with the stream name and the offset from which to read
-// 2. processSubscribers coalesces multiple pending requests and determines the minimum required offset per stream
+// 1. subscriber reqisters itselfs as present
+// 2. processSubscribers interrogates each subscriber's current read offset to determine the minimum required offset per stream
 // 3. processSubscribers then reads from Redis using XREAD, blocking for some small amount of time that's large enough to read a batch of messages but not so long as to block pending subscribers for a significant amount of time
-// 4. processSubscribers then sends results to all subscribers with pending requests
-// 5. if any streams didn't yield results, subscribers to those streams will be carried over to the next loop of processSubscribers
-// 6. once the subscribers that did receive results have had a chance to forward them to their clients, they submit a new request to b.subscriberRequests in order to be included in an upcoming loop
-//
+// 4. processSubscribers then sends results to all relevant registered subscribers
 func (b *redisBroker) processSubscribers() {
 	for {
 		b.readStreams()

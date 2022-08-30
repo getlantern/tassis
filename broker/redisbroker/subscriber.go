@@ -152,8 +152,3 @@ type ack struct {
 	offset string
 	errCh  chan error
 }
-
-type subscriberRequest struct {
-	sub    *subscriber
-	offset string
-}
