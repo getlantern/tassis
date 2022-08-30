@@ -6,7 +6,7 @@ go 1.19
 
 require (
 	github.com/getlantern/errors v1.0.1
-	github.com/getlantern/golog v0.0.0-20201105130739-9586b8bde3a9
+	github.com/getlantern/golog v0.0.0-20211223150227-d4d95a44d873
 	github.com/getlantern/keyman v0.0.0-20210622061955-aa0d47d4932c
 	github.com/getlantern/libmessaging-go v0.0.0-20211102124917-057375a3d4f6
 	github.com/getlantern/memhelper v0.0.0-20220104170102-df557102babd
@@ -73,11 +73,14 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.9.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.18.0 // indirect
+	go.uber.org/atomic v1.7.0 // indirect
+	go.uber.org/multierr v1.6.0 // indirect
+	go.uber.org/zap v1.19.1 // indirect
 	golang.org/x/crypto v0.0.0-20201016220609-9e8e0b390897 // indirect
 	golang.org/x/net v0.0.0-20220520000938-2e3eb7b945c2 // indirect
 	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
 	golang.org/x/text v0.3.7 // indirect
-	google.golang.org/genproto v0.0.0-20220413183235-5e96e2839df9 // indirect
+	google.golang.org/genproto v0.0.0-20220519153652-3a47de7e79bd // indirect
 	google.golang.org/grpc v1.46.2 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/ini.v1 v1.57.0 // indirect

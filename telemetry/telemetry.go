@@ -93,7 +93,7 @@ func initTeleportTracing() func() {
 	resource :=
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("tassis-teleport"),
+			semconv.ServiceNameKey.String("tassis-lantrnet"),
 		)
 	tracerProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
@@ -136,7 +136,7 @@ func initTeleportMetrics() func() {
 	resource :=
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("tassis-teleport"),
+			semconv.ServiceNameKey.String("tassis-lantrnet"),
 		)
 
 	c := controller.New(
